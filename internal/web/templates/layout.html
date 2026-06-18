@@ -21,7 +21,22 @@
             <li><strong><a href="/">VideoShare</a></strong></li>
         </ul>
         <ul>
-            <li><a href="/admin">Upload</a></li>
+            {{if .IsLoggedIn}}
+			<li><small>{{.Username}} ({{.UserRole}})</small></li>
+			<li><a href="/admin">Admin</a></li>
+			{{if eq $.UserRole "admin"}}
+			<li><a href="/admin/categories">Categories</a></li>
+			<li><a href="/admin/playlists">Playlists</a></li>
+			{{end}}
+			<li>
+                <form action="/logout" method="POST" class="inline-form">
+                    <input type="hidden" name="_csrf" value="{{.CSRFToken}}">
+                    <button type="submit" class="outline secondary">Logout</button>
+                </form>
+            </li>
+            {{else}}
+            <li><a href="/login">Login</a></li>
+            {{end}}
         </ul>
     </nav>
     <main class="container">

@@ -6,10 +6,13 @@
 <div class="error-box">{{.Error}}</div>
 {{end}}
 
+{{$data := .Data}}
+{{$csrf := .CSRFToken}}
+
 <article>
     <header><h2>Upload New Video</h2></header>
     <form action="/api/upload" method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="_csrf" value="{{.CSRFToken}}">
+        <input type="hidden" name="_csrf" value="{{$csrf}}">
         <div class="grid">
             <label for="title">Title
                 <input type="text" id="title" name="title" placeholder="My cool video" required>
@@ -20,6 +23,14 @@
         </div>
         <label for="description">Description (optional)
             <textarea id="description" name="description" placeholder="What's this video about?"></textarea>
+        </label>
+        <label for="category">Category (optional)
+            <select id="category" name="category_id">
+                <option value="">— No category —</option>
+                {{range $cat := $data.Categories}}
+                <option value="{{$cat.ID}}">{{$cat.Name}}</option>
+                {{end}}
+            </select>
         </label>
         <label for="file">Video File
             <input type="file" id="file" name="file" accept="video/*" required>
@@ -36,6 +47,7 @@
             <th>Size</th>
             <th>Views</th>
             <th>Created</th>
+            <th>Playlists</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -47,20 +59,69 @@
             <td>{{.Views}}</td>
             <td>{{.CreatedAt}}</td>
             <td>
+                {{$playlistIDs := index $data.ResourcePlaylists .ID}}
+                {{if $playlistIDs}}
+                    {{range $pid := $playlistIDs}}
+                    <span class="tag">{{index $data.PlaylistNames $pid}}</span>
+                    {{end}}
+                {{else}}
+                    <small>None</small>
+                {{end}}
+            </td>
+            <td>
                 <a href="/s/{{.ID}}" role="button" class="outline">Share</a>
                 <form action="/api/resource/{{.ID}}" method="POST" class="inline-form">
                     <input type="hidden" name="_method" value="DELETE">
-                    <input type="hidden" name="_csrf" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="_csrf" value="{{$csrf}}">
                     <button type="submit" class="secondary outline">Delete</button>
                 </form>
             </td>
         </tr>
         {{else}}
         <tr>
-            <td colspan="5">No videos uploaded yet. Upload your first video above!</td>
+            <td colspan="6">No videos uploaded yet. Upload your first video above!</td>
         </tr>
         {{end}}
     </tbody>
 </table>
+
+<details>
+    <summary><h2 style="display:inline">Unassigned Videos</h2></summary>
+    {{if $data.UnassignedVideos}}
+    <table role="grid">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Size</th>
+                <th>Views</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range $data.UnassignedVideos}}
+            <tr>
+                <td><strong>{{.Title}}</strong></td>
+                <td>{{.FileSize}}</td>
+                <td>{{.Views}}</td>
+                <td>{{.CreatedAt}}</td>
+                <td>
+                    <a href="/s/{{.ID}}" role="button" class="outline">Share</a>
+                    <form action="/api/resource/{{.ID}}" method="POST" class="inline-form">
+                        <input type="hidden" name="_method" value="DELETE">
+                        <input type="hidden" name="_csrf" value="{{$csrf}}">
+                        <button type="submit" class="secondary outline">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{else}}
+            <tr><td colspan="5">All videos are assigned to playlists.</td></tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>All videos are assigned to playlists.</p>
+    {{end}}
+</details>
 {{end}}
 {{template "layout" .}}

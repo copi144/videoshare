@@ -11,7 +11,8 @@ import (
 type Config struct {
 	Addr           string
 	DataDir        string
-	UploadPassword string
+	AdminUsername  string
+	AdminPassword  string
 	SessionKey     string
 	CsrfKey        string
 	CookieSecure   bool
@@ -20,18 +21,21 @@ type Config struct {
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	cfg := &Config{
-		Addr:         getEnv("PORT", ":8080"),
-		DataDir:      getEnv("DATA_DIR", "./data"),
-		CsrfKey:      getEnv("CSRF_KEY", ""),
+		Addr:    getEnv("PORT", ":8080"),
+		DataDir: getEnv("DATA_DIR", "./data"),
+		CsrfKey: getEnv("CSRF_KEY", ""),
 		CookieSecure: false,
 	}
 
-	// UploadPassword — fail fast: generate a random one if not set.
-	if pw := os.Getenv("UPLOAD_PASSWORD"); pw != "" {
-		cfg.UploadPassword = pw
+	// AdminUsername — default to "admin".
+	cfg.AdminUsername = getEnv("ADMIN_USERNAME", "admin")
+
+	// AdminPassword — fail fast: generate a random one if not set.
+	if pw := os.Getenv("ADMIN_PASSWORD"); pw != "" {
+		cfg.AdminPassword = pw
 	} else {
-		cfg.UploadPassword = generateRandomPassword(16)
-		slog.Warn("UPLOAD_PASSWORD not set, generated random password", "password", cfg.UploadPassword)
+		cfg.AdminPassword = generateRandomPassword(16)
+		slog.Warn("ADMIN_PASSWORD not set, generated random password", "password", cfg.AdminPassword)
 	}
 
 	// SessionKey — fail fast: generate a random key if not set.

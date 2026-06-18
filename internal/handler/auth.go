@@ -43,9 +43,12 @@ func (h *AuthHandler) ServeSharePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isLoggedIn := middleware.GetUserID(r.Context(), h.sm) != ""
+
 	if err := parseAndRender(w, h.templates, "share.html", &TemplateData{
 		Title:      "Enter Password — VideoShare",
 		ResourceID: id,
+		IsLoggedIn: isLoggedIn,
 	}); err != nil {
 		slog.Error("failed to render share template", "error", err)
 	}
@@ -71,18 +74,20 @@ func (h *AuthHandler) Authenticate(w http.ResponseWriter, r *http.Request) {
 
 	if err := bcrypt.CompareHashAndPassword([]byte(resource.PasswordHash), []byte(password)); err != nil {
 		// Password mismatch — re-render the share page with an error.
+		isLoggedIn := middleware.GetUserID(r.Context(), h.sm) != ""
 		if err := parseAndRender(w, h.templates, "share.html", &TemplateData{
 			Title:      "Enter Password — VideoShare",
 			ResourceID: id,
 			Error:      "Invalid password. Please try again.",
+			IsLoggedIn: isLoggedIn,
 		}); err != nil {
 			slog.Error("failed to render share template", "error", err)
 		}
 		return
 	}
 
-	// Mark the session as authenticated.
-	middleware.SetAuthenticated(r.Context(), h.sm)
+	// Mark the session as authenticated for video viewing.
+	middleware.SetVideoAuth(r.Context(), h.sm)
 
 	slog.Info("resource authenticated", "id", id)
 	http.Redirect(w, r, "/s/"+id+"/watch", http.StatusSeeOther)
@@ -109,23 +114,17 @@ func (h *AuthHandler) ServeWatchPage(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to increment views", "id", id, "error", err)
 	}
 
-	if err := parseAndRender(w, h.templates, "watch.html", resource); err != nil {
+	username := middleware.GetUsername(r.Context(), h.sm)
+	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	isLoggedIn := middleware.GetUserID(r.Context(), h.sm) != ""
+
+	if err := parseAndRender(w, h.templates, "watch.html", &TemplateData{
+		Title:      resource.Title,
+		IsLoggedIn: isLoggedIn,
+		Username:   username,
+		UserRole:   userRole,
+		Data:       resource,
+	}); err != nil {
 		slog.Error("failed to render watch template", "error", err)
 	}
-}
-
-// ServeLoginPage renders a simple unauthorized page with a link back to the share page.
-// GET /login
-func (h *AuthHandler) ServeLoginPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte(`<!DOCTYPE html>
-<html>
-<head><title>Unauthorized</title></head>
-<body>
-<h1>Unauthorized</h1>
-<p>You need to authenticate to access this page.</p>
-<p><a href="/">Go to homepage</a></p>
-</body>
-</html>`))
 }

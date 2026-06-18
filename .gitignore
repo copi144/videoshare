@@ -1,8 +1,24 @@
-# Binary
+# Binaries
+server
 videoserver
+*.exe
+*.test
+*.out
 
 # Data directory
 data/
 
 # Environment
 .env
+
+# macOS
+.DS_Store
+
+# Editor temp files
+*.swp
+*~
+*.bak
+
+# Dependency directory
+# Uncomment if using vendoring
+# vendor/

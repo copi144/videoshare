@@ -30,6 +30,12 @@ func main() {
 	}
 	defer db.Close()
 
+	// Bootstrap admin user on first run.
+	if err := model.BootstrapAdmin(db, cfg.AdminUsername, cfg.AdminPassword); err != nil {
+		slog.Error("failed to bootstrap admin", "error", err)
+		os.Exit(1)
+	}
+
 	sessStore := model.NewSessionStore(db)
 	defer sessStore.StopCleanup()
 
@@ -48,8 +54,11 @@ func main() {
 	}
 
 	resourceStore := model.NewResourceStore(db)
+	userStore := model.NewUserStore(db)
+	categoryStore := model.NewCategoryStore(db)
+	playlistStore := model.NewPlaylistStore(db)
 
-	router := handler.NewRouter(sm, web.Templates(), csrfKey, cfg.CookieSecure, resourceStore, cfg.DataDir, db)
+	router := handler.NewRouter(sm, web.Templates(), csrfKey, cfg.CookieSecure, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore)
 
 	addr := cfg.Addr
 	slog.Info("starting server", "addr", addr)

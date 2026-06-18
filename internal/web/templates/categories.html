@@ -1,0 +1,73 @@
+{{define "title"}}Categories — VideoShare{{end}}
+{{define "content"}}
+<h1>Category Management</h1>
+
+{{if .Error}}
+<div class="error-box">{{.Error}}</div>
+{{end}}
+
+{{$data := .Data}}
+{{$csrf := .CSRFToken}}
+
+<article>
+    <header><h2>Create Category</h2></header>
+    <form action="/admin/categories" method="POST">
+        <input type="hidden" name="_csrf" value="{{$csrf}}">
+        <div class="grid">
+            <label for="name">Name
+                <input type="text" id="name" name="name" placeholder="Category name" required>
+            </label>
+            <label for="description">Description
+                <input type="text" id="description" name="description" placeholder="Optional description">
+            </label>
+        </div>
+        <button type="submit">Create Category</button>
+    </form>
+</article>
+
+{{range $cat := $data.Categories}}
+<article>
+    <header>
+        <strong>{{$cat.Category.Name}}</strong>
+        <small>({{$cat.VideoCount}} videos)</small>
+        <form action="/admin/categories/{{$cat.Category.ID}}/delete" method="POST" class="inline-form" style="float:right">
+            <input type="hidden" name="_csrf" value="{{$csrf}}">
+            <input type="hidden" name="_method" value="DELETE">
+            <button type="submit" class="secondary outline small">Delete</button>
+        </form>
+    </header>
+    <p>{{$cat.Category.Description}}</p>
+    <p><small>Created by: {{$cat.Category.CreatedBy}}</small></p>
+
+    <h3>Assigned Uploaders</h3>
+    {{if $cat.UploaderUsernames}}
+    <ul>
+        {{range $cat.UploaderUsernames}}
+        <li><small>{{.}}</small></li>
+        {{end}}
+    </ul>
+    {{else}}
+    <p><small>No uploaders assigned.</small></p>
+    {{end}}
+
+    <details>
+        <summary>Manage Uploaders</summary>
+        <form action="/admin/categories/{{$cat.Category.ID}}/uploaders" method="POST">
+            <input type="hidden" name="_csrf" value="{{$csrf}}">
+            <fieldset>
+                {{range $user := $data.Users}}
+                <label>
+                    <input type="checkbox" name="user_ids" value="{{$user.ID}}">
+                    {{$user.Username}} ({{$user.Role}})
+                </label>
+                {{end}}
+            </fieldset>
+            <button type="submit" class="outline">Update Uploaders</button>
+        </form>
+    </details>
+</article>
+{{else}}
+<article><p>No categories yet. Create your first category above.</p></article>
+{{end}}
+{{end}}
+{{template "layout" .}}

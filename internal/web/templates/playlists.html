@@ -1,0 +1,118 @@
+{{define "title"}}Playlists — VideoShare{{end}}
+{{define "content"}}
+<h1>Playlist Management</h1>
+
+{{if .Error}}
+<div class="error-box">{{.Error}}</div>
+{{end}}
+
+{{$data := .Data}}
+{{$csrf := .CSRFToken}}
+
+<article>
+    <header><h2>Create Playlist</h2></header>
+    <form action="/admin/playlists" method="POST">
+        <input type="hidden" name="_csrf" value="{{$csrf}}">
+        <div class="grid">
+            <label for="name">Name
+                <input type="text" id="name" name="name" placeholder="Playlist name" required>
+            </label>
+            <label for="category">Category
+                <select id="category" name="category_id" required>
+                    <option value="">— Select category —</option>
+                    {{range $cat := $data.Categories}}
+                    <option value="{{$cat.ID}}">{{$cat.Name}}</option>
+                    {{end}}
+                </select>
+            </label>
+        </div>
+        <div class="grid">
+            <label for="description">Description
+                <input type="text" id="description" name="description" placeholder="Optional description">
+            </label>
+            <label for="sort_order">Sort Order
+                <input type="number" id="sort_order" name="sort_order" value="0" min="0">
+            </label>
+        </div>
+        <button type="submit">Create Playlist</button>
+    </form>
+</article>
+
+<h2>Playlists by Category</h2>
+
+{{range $cat := $data.Categories}}
+<article>
+    <header>
+        <strong>{{$cat.Name}}</strong>
+    </header>
+    <p><small>{{$cat.Description}}</small></p>
+
+    {{$playlists := index $data.Playlists $cat.ID}}
+    {{if $playlists}}
+        {{range $pl := $playlists}}
+        <article style="margin-left:1rem; border-left: 3px solid var(--pico-primary);">
+            <header>
+                <strong>{{$pl.Name}}</strong>
+                <form action="/admin/playlists/{{$pl.ID}}/delete" method="POST" class="inline-form" style="float:right">
+                    <input type="hidden" name="_csrf" value="{{$csrf}}">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="secondary outline small">Delete</button>
+                </form>
+            </header>
+            <p><small>{{$pl.Description}}</small></p>
+
+            {{$videos := index $data.Videos $pl.ID}}
+            {{if $videos}}
+            <h4>Videos</h4>
+            <table role="grid">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $vid := $videos}}
+                    <tr>
+                        <td>{{$vid.Title}}</td>
+                        <td>
+                            <form action="/admin/playlists/{{$pl.ID}}/videos/remove" method="POST" class="inline-form">
+                                <input type="hidden" name="_csrf" value="{{$csrf}}">
+                                <input type="hidden" name="resource_id" value="{{$vid.ID}}">
+                                <button type="submit" class="secondary outline small">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else}}
+            <p><small>No videos in this playlist.</small></p>
+            {{end}}
+
+            <details>
+                <summary>Add Video</summary>
+                <form action="/admin/playlists/{{$pl.ID}}/videos" method="POST">
+                    <input type="hidden" name="_csrf" value="{{$csrf}}">
+                    <div class="grid">
+                        <select name="resource_id" required>
+                            <option value="">— Select video —</option>
+                            {{range $vid := $data.AllVideos}}
+                            <option value="{{$vid.ID}}">{{$vid.Title}}</option>
+                            {{end}}
+                        </select>
+                        <button type="submit" class="outline">Add</button>
+                    </div>
+                </form>
+            </details>
+        </article>
+        {{end}}
+    {{else}}
+    <p><small>No playlists in this category.</small></p>
+    {{end}}
+</article>
+{{else}}
+<article><p>No categories yet. Create categories first to organize playlists.</p></article>
+{{end}}
+{{end}}
+{{template "layout" .}}

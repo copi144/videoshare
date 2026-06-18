@@ -1,0 +1,20 @@
+{{define "title"}}Login — VideoShare{{end}}
+{{define "content"}}
+<article style="max-width: 500px; margin: 2rem auto;">
+    <header><h1>Login</h1></header>
+    {{if .Error}}
+    <div class="error-box"><small>✗</small> {{.Error}}</div>
+    {{end}}
+    <form action="/login" method="POST">
+        <input type="hidden" name="_csrf" value="{{.CSRFToken}}">
+        <label for="username">Username
+            <input type="text" id="username" name="username" placeholder="Username" required autofocus>
+        </label>
+        <label for="password">Password
+            <input type="password" id="password" name="password" placeholder="Password" required>
+        </label>
+        <button type="submit">Login</button>
+    </form>
+</article>
+{{end}}
+{{template "layout" .}}

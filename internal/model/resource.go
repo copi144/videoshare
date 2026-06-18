@@ -16,6 +16,8 @@ type Resource struct {
 	FileSize     int64     `json:"file_size"`
 	ContentType  string    `json:"content_type"`
 	Views        int       `json:"views"`
+	UploadedBy   string    `json:"uploaded_by"`
+	CategoryID   string    `json:"category_id"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -32,26 +34,28 @@ func NewResourceStore(db *sql.DB) *ResourceStore {
 
 // Insert creates a new resource record.
 func (s *ResourceStore) Insert(r *Resource) error {
-	query := `INSERT INTO resources (id, title, description, password_hash, filename, file_size, content_type)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO resources (id, title, description, password_hash, filename, file_size, content_type, uploaded_by, category_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := s.db.Exec(query,
 		r.ID, r.Title, r.Description, r.PasswordHash,
 		r.Filename, r.FileSize, r.ContentType,
+		r.UploadedBy, r.CategoryID,
 	)
 	return err
 }
 
 // GetByID retrieves a resource by its ID.
 func (s *ResourceStore) GetByID(id string) (*Resource, error) {
-	query := `SELECT id, title, description, password_hash, filename, file_size, content_type, views, created_at, updated_at
+	query := `SELECT id, title, description, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, created_at, updated_at
 		FROM resources WHERE id = ?`
 
 	r := &Resource{}
 	err := s.db.QueryRow(query, id).Scan(
 		&r.ID, &r.Title, &r.Description, &r.PasswordHash,
 		&r.Filename, &r.FileSize, &r.ContentType,
-		&r.Views, &r.CreatedAt, &r.UpdatedAt,
+		&r.Views, &r.UploadedBy, &r.CategoryID,
+		&r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -61,7 +65,7 @@ func (s *ResourceStore) GetByID(id string) (*Resource, error) {
 
 // List returns all resources ordered by creation date descending.
 func (s *ResourceStore) List() ([]*Resource, error) {
-	query := `SELECT id, title, description, password_hash, filename, file_size, content_type, views, created_at, updated_at
+	query := `SELECT id, title, description, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, created_at, updated_at
 		FROM resources ORDER BY created_at DESC`
 
 	rows, err := s.db.Query(query)
@@ -76,7 +80,35 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 		if err := rows.Scan(
 			&r.ID, &r.Title, &r.Description, &r.PasswordHash,
 			&r.Filename, &r.FileSize, &r.ContentType,
-			&r.Views, &r.CreatedAt, &r.UpdatedAt,
+			&r.Views, &r.UploadedBy, &r.CategoryID,
+			&r.CreatedAt, &r.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		resources = append(resources, r)
+	}
+	return resources, rows.Err()
+}
+
+// ListByUploader returns all resources uploaded by a specific user, ordered by creation date descending.
+func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
+	query := `SELECT id, title, description, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, created_at, updated_at
+		FROM resources WHERE uploaded_by = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var resources []*Resource
+	for rows.Next() {
+		r := &Resource{}
+		if err := rows.Scan(
+			&r.ID, &r.Title, &r.Description, &r.PasswordHash,
+			&r.Filename, &r.FileSize, &r.ContentType,
+			&r.Views, &r.UploadedBy, &r.CategoryID,
+			&r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

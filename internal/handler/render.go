@@ -10,10 +10,13 @@ import (
 type TemplateData struct {
 	Title      string
 	IsLoggedIn bool
+	UserRole   string
+	Username   string
 	Resources  interface{}
 	ResourceID string
 	Error      string
 	CSRFToken  string
+	Data       interface{}
 }
 
 // parseAndRender parses and renders a named template with the base layout.
