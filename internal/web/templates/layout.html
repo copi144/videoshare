@@ -1,0 +1,32 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{block "title" .}}VideoShare{{end}}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        main.container { padding-top: 2rem; }
+        .video-container { max-width: 100%; margin: 1rem 0; }
+        nav.breadcrumb { margin-bottom: 1.5rem; }
+        .error-box { color: #d32f2f; padding: 0.5rem; margin: 1rem 0; }
+        table { width: 100%; }
+        .inline-form { display: inline; }
+    </style>
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><strong><a href="/">VideoShare</a></strong></li>
+        </ul>
+        <ul>
+            <li><a href="/admin">Upload</a></li>
+        </ul>
+    </nav>
+    <main class="container">
+        {{template "content" .}}
+    </main>
+</body>
+</html>
+{{end}}

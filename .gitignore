@@ -1,0 +1,8 @@
+# Binary
+videoserver
+
+# Data directory
+data/
+
+# Environment
+.env

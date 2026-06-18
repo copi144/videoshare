@@ -1,0 +1,17 @@
+{{define "title"}}Enter Password — VideoShare{{end}}
+{{define "content"}}
+<article>
+    <header><h1>Password Required</h1></header>
+    <p>This video is protected. Enter the share password to continue.</p>
+    {{if .Error}}
+    <div class="error-box"><small>✗</small> {{.Error}}</div>
+    {{end}}
+    <form action="/s/{{.ResourceID}}/auth" method="POST">
+        <input type="hidden" name="_csrf" value="{{.CSRFToken}}">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Share password" required autofocus>
+        <button type="submit">Watch Video</button>
+    </form>
+</article>
+{{end}}
+{{template "layout" .}}
