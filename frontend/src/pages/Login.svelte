@@ -31,7 +31,7 @@
   <form on:submit|preventDefault={handleSubmit}>
     <label for="username">
       Username
-      <input type="text" id="username" name="username" bind:value={username} required autocomplete="username" />
+      <input type="text" id="username" name="username" bind:value={username} required autocomplete="username" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
     </label>
     <label for="totp_code">
       Authentication Code

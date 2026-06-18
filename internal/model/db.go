@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 
 	_ "modernc.org/sqlite"
@@ -70,10 +69,9 @@ func BootstrapAdmin(db *sql.DB, username string) (totpURI string, err error) {
 		return "", fmt.Errorf("generate totp key: %w", err)
 	}
 
-	id := uuid.New().String()
 	_, err = db.Exec(
 		"INSERT INTO users (id, username, totp_secret, role) VALUES (?, ?, ?, 'admin')",
-		id, username, key.Secret(),
+		username, username, key.Secret(),
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert admin user: %w", err)

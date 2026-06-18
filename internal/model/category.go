@@ -6,10 +6,11 @@ import (
 	"time"
 )
 
-var validCategoryName = regexp.MustCompile(`^[0-9A-Za-z\-]+$`)
+var validName = regexp.MustCompile(`^[0-9A-Za-z\-]+$`)
 
-func IsValidCategoryName(name string) bool {
-	return validCategoryName.MatchString(name)
+// IsValidName checks that a name matches the allowed pattern [0-9A-Za-z-]+.
+func IsValidName(name string) bool {
+	return validName.MatchString(name)
 }
 
 // Category represents a video category.

@@ -12,7 +12,6 @@ import (
 	"net/url"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 
 	"videoshare/internal/middleware"
@@ -121,6 +120,11 @@ func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !model.IsValidName(req.Username) {
+		respondJSONError(w, "Username must only contain letters, numbers, and hyphens", http.StatusBadRequest)
+		return
+	}
+
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "VideoShare",
 		AccountName: req.Username,
@@ -132,7 +136,7 @@ func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := &model.User{
-		ID:         uuid.New().String(),
+		ID:         req.Username,
 		Username:   req.Username,
 		TotpSecret: key.Secret(),
 		Role:       "uploader",

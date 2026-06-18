@@ -51,7 +51,7 @@
   <form on:submit|preventDefault={handleCreate}>
     <label for="username">
       Username
-      <input type="text" id="username" name="username" bind:value={username} required autocomplete="off" />
+      <input type="text" id="username" name="username" bind:value={username} required autocomplete="off" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
     </label>
     <button type="submit" disabled={loading} aria-busy={loading}>
       {loading ? 'Creating…' : 'Create User'}

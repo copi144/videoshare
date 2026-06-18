@@ -44,7 +44,7 @@ func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if !model.IsValidCategoryName(req.Name) {
+	if !model.IsValidName(req.Name) {
 		respondJSONError(w, "Category name must only contain letters, numbers, and hyphens", http.StatusBadRequest)
 		return
 	}
@@ -138,6 +138,25 @@ func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Reque
 		slog.Error("failed to list categories", "error", err)
 		respondJSONError(w, "Failed to list categories", http.StatusInternalServerError)
 		return
+	}
+
+	// Ensure the Global category is always included (it may not be in ListByUploader results
+	// since Global was only inserted into categories, not category_uploaders).
+	if userRole != "admin" {
+		globalCat, globalErr := h.categoryStore.GetByID(model.GlobalCategoryID)
+		if globalErr == nil && globalCat != nil {
+			// Check if Global is already in the list
+			hasGlobal := false
+			for _, c := range categories {
+				if c.ID == model.GlobalCategoryID {
+					hasGlobal = true
+					break
+				}
+			}
+			if !hasGlobal {
+				categories = append([]*model.Category{globalCat}, categories...)
+			}
+		}
 	}
 
 	respondJSONOK(w, map[string]interface{}{
