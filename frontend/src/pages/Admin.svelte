@@ -42,7 +42,7 @@
   }
 
   $: selectedCategory = categories.find(c => c.id === uploadForm.category_id);
-  $: isGlobal = selectedCategory ? selectedCategory.id.startsWith('00000000') : false;
+  $: isGlobal = selectedCategory ? selectedCategory.id === 'global' : false;
 
   function formatSize(bytes: number): string {
     if (bytes < 1024) return bytes + ' B';
@@ -171,7 +171,7 @@
         <option value="">— Select a category —</option>
         {#each categories as cat}
           <option value={cat.id}>
-            {cat.name}{cat.id.startsWith('00000000') ? ' (public)' : ''}
+            {cat.name}{cat.id === 'global' ? ' (public)' : ''}
           </option>
         {/each}
       </select>

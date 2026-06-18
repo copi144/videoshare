@@ -2,8 +2,15 @@ package model
 
 import (
 	"database/sql"
+	"regexp"
 	"time"
 )
+
+var validCategoryName = regexp.MustCompile(`^[0-9A-Za-z\-]+$`)
+
+func IsValidCategoryName(name string) bool {
+	return validCategoryName.MatchString(name)
+}
 
 // Category represents a video category.
 type Category struct {

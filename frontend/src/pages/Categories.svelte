@@ -71,7 +71,7 @@
   <form on:submit|preventDefault={handleCreate}>
     <label for="name">
       Name
-      <input type="text" id="name" name="name" bind:value={formName} required />
+      <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
     </label>
     <label for="description">
       Description

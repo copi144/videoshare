@@ -7,8 +7,6 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-
 	"videoshare/internal/middleware"
 	"videoshare/internal/model"
 )
@@ -46,10 +44,15 @@ func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !model.IsValidCategoryName(req.Name) {
+		respondJSONError(w, "Category name must only contain letters, numbers, and hyphens", http.StatusBadRequest)
+		return
+	}
+
 	userID := middleware.GetUserID(r.Context(), h.sm)
 
 	cat := &model.Category{
-		ID:          uuid.New().String(),
+		ID:          req.Name,
 		Name:        req.Name,
 		Description: req.Description,
 		CreatedBy:   userID,

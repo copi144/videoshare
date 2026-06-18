@@ -13,9 +13,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// GlobalCategoryID is the fixed UUID for the implicit "Global" category.
+// GlobalCategoryID is the fixed ID for the implicit "Global" category.
 // Videos in this category require no password — they are publicly accessible.
-const GlobalCategoryID = "00000000-0000-0000-0000-000000000000"
+const GlobalCategoryID = "global"
 
 // OpenDB opens a SQLite database at the given path, applies WAL mode,
 // sets connection limits, and runs auto-migration.
