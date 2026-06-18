@@ -44,18 +44,41 @@ export const login = (username: string, totpCode: string) =>
 export const logout = () =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/logout');
 
+// Types
+export interface Resource {
+  id: string;
+  title: string;
+  filename: string;
+  file_size: number;
+  content_type: string;
+  views: number;
+  created_at: string;
+  updated_at: string;
+  uploaded_by: string;
+  category_id: string;
+  uploaded_username?: string;
+  category_name?: string;
+}
+
+export interface ResourceDetail extends Resource {
+  readme?: string;
+}
+
 // Resources
 export const listResources = () =>
-  request<{resources: any[]}>('GET', '/api/resources');
+  request<{ok: boolean; resources: Resource[]}>('GET', '/api/resources');
 
 export const getResource = (id: string) =>
-  request<{resource: any}>('GET', `/api/resources/${id}`);
+  request<ResourceDetail>('GET', `/api/resources/${id}`);
 
 export const uploadVideo = (formData: FormData) =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/upload', formData);
 
 export const deleteResource = (id: string) =>
   request<{ok: boolean}>('DELETE', `/api/resource/${id}`);
+
+export const updateReadme = (resourceId: string, readme: string) =>
+  request<{ok: boolean}>('PUT', `/api/resources/${resourceId}/readme`, { readme });
 
 export const shareAuth = (id: string, password: string) =>
   request<{ok: boolean; redirect?: string}>('POST', `/api/s/${id}/auth`, { password });

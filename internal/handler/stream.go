@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"videoshare/internal/model"
+	"videoshare/internal/storage"
 )
 
 // StreamHandler handles video streaming with range request support.
@@ -27,11 +28,13 @@ func NewStreamHandler(store *model.ResourceStore, dataDir string) *StreamHandler
 func (h *StreamHandler) ServeVideo(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	// Path traversal prevention — clean the path and verify it stays within
-	// the videos directory.
-	videosDir := filepath.Clean(filepath.Join(h.dataDir, "videos"))
-	cleanPath := filepath.Clean(filepath.Join(videosDir, id+".mp4"))
-	if !strings.HasPrefix(cleanPath, videosDir) {
+	// Reconstruct paths using storage helpers.
+	originalPath := storage.OriginalPath(h.dataDir, id)
+	cleanPath := filepath.Clean(originalPath)
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, id))
+
+	// Path traversal prevention.
+	if !strings.HasPrefix(cleanPath, hashDir) {
 		slog.Error("path traversal attempt", "id", id, "resolved", cleanPath)
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return

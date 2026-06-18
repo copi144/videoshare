@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { isAuthenticated, navigate } from '../stores/auth';
-  import { listResources, uploadVideo, deleteResource, listCategories } from '../lib/api';
+  import { listResources, uploadVideo, deleteResource, listCategories, updateReadme } from '../lib/api';
   import {
     getWatchHistory,
     clearWatchHistory,
@@ -14,16 +14,16 @@
   interface Resource {
     id: string;
     title: string;
-    description: string;
     content_type: string;
     file_size: number;
     views: number;
     created_at: string;
+    updated_at?: string;
     uploaded_by: string;
     uploaded_username: string;
+    filename?: string;
     category_id: string;
     category_name: string;
-    password_hash: string;
   }
 
   interface Category {
@@ -34,7 +34,7 @@
 
   let resources: Resource[] = [];
   let categories: Category[] = [];
-  let uploadForm = { title: '', description: '', category_id: '', password: '' };
+  let uploadForm = { title: '', readme: '', category_id: '', password: '' };
   let selectedFile: File | null = null;
   let error: string | null = null;
   let uploadError: string | null = null;
@@ -195,14 +195,14 @@
       const fd = new FormData();
       fd.append('file', selectedFile);
       fd.append('title', uploadForm.title.trim());
-      fd.append('description', uploadForm.description.trim());
+      fd.append('readme', uploadForm.readme.trim());
       fd.append('category_id', uploadForm.category_id);
       if (uploadForm.password.trim()) {
         fd.append('password', uploadForm.password.trim());
       }
       await uploadVideo(fd);
       // Reset form
-      uploadForm = { title: '', description: '', category_id: '', password: '' };
+      uploadForm = { title: '', readme: '', category_id: '', password: '' };
       selectedFile = null;
       // Reload resources
       await loadData();
@@ -289,9 +289,9 @@
       Title
       <input type="text" id="title" name="title" bind:value={uploadForm.title} required />
     </label>
-    <label for="description">
-      Description
-      <textarea id="description" name="description" bind:value={uploadForm.description}></textarea>
+    <label for="readme">
+      Readme (Markdown)
+      <textarea id="readme" name="readme" bind:value={uploadForm.readme} placeholder="Optional markdown description..."></textarea>
     </label>
     <label for="category">
       Category

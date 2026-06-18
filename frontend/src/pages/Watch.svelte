@@ -8,16 +8,17 @@
   interface ResourceInfo {
     id: string;
     title: string;
-    description: string;
+    readme?: string;
     content_type: string;
     file_size: number;
     views: number;
     created_at: string;
+    updated_at?: string;
     uploaded_by: string;
     uploaded_username: string;
+    filename?: string;
     category_id: string;
     category_name: string;
-    password_hash: string;
   }
 
   let resource: ResourceInfo | null = null;
@@ -37,8 +38,7 @@
       return;
     }
     try {
-      const data = await getResource(params.id);
-      resource = data.resource;
+      resource = await getResource(params.id);
       addWatchHistory({ id: resource.id, title: resource.title, watchedAt: new Date().toISOString() });
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to load video info.';
@@ -60,7 +60,13 @@
       Your browser does not support the video tag.
     </video>
   </article>
-  <p>{resource.description}</p>
+  {#if resource.readme}
+    <article>
+      <pre style="white-space: pre-wrap; margin: 0; font-family: inherit;">{resource.readme}</pre>
+    </article>
+  {:else}
+    <p style="color: var(--muted-color, #888); font-style: italic;">No description</p>
+  {/if}
   <p>Views: {resource.views} | Size: {formatSize(resource.file_size)} | Uploaded by: {resource.uploaded_username}</p>
   <a href="#/admin">← Back to Videos</a>
 {/if}

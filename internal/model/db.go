@@ -105,7 +105,6 @@ func migrate(db *sql.DB) error {
 	query := `CREATE TABLE IF NOT EXISTS resources (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL DEFAULT '',
-		description TEXT NOT NULL DEFAULT '',
 		password_hash TEXT NOT NULL,
 		filename TEXT NOT NULL DEFAULT '',
 		file_size INTEGER NOT NULL DEFAULT 0,

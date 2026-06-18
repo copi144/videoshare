@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,11 +12,12 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"lukechampine.com/blake3"
 
 	"videoshare/internal/middleware"
 	"videoshare/internal/model"
+	"videoshare/internal/storage"
 	"videoshare/internal/upload"
 )
 
@@ -53,9 +56,9 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := r.FormValue("title")
-	description := r.FormValue("description")
 	password := r.FormValue("password")
 	categoryID := r.FormValue("category_id")
+	readme := r.FormValue("readme")
 
 	// Category is required.
 	if categoryID == "" {
@@ -116,31 +119,59 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := uuid.New().String()
-
-	// Ensure the videos directory exists.
-	videosDir := filepath.Join(h.dataDir, "videos")
-	if err := os.MkdirAll(videosDir, 0o755); err != nil {
-		slog.Error("failed to create videos directory", "error", err)
-		respondError(w, r, http.StatusInternalServerError, "Storage error")
-		return
-	}
-
-	// Save the uploaded file to disk.
-	dstPath := filepath.Join(videosDir, id+".mp4")
-	dst, err := os.Create(dstPath)
+	// Save to temp file while computing BLAKE3 hash via TeeReader.
+	tmpFile, err := os.CreateTemp(h.dataDir, "upload-*")
 	if err != nil {
-		slog.Error("failed to create video file", "error", err)
+		slog.Error("failed to create temp file", "error", err)
 		respondError(w, r, http.StatusInternalServerError, "Storage error")
 		return
 	}
-	defer dst.Close()
+	defer os.Remove(tmpFile.Name())
 
-	if _, err := io.Copy(dst, file); err != nil {
-		slog.Error("failed to write video file", "error", err)
-		os.Remove(dstPath)
+	hashWriter := blake3.New(32, nil)
+	teeReader := io.TeeReader(file, hashWriter)
+	if _, err = io.Copy(tmpFile, teeReader); err != nil {
+		slog.Error("failed to write temp file", "error", err)
+		tmpFile.Close()
 		respondError(w, r, http.StatusInternalServerError, "Storage error")
 		return
+	}
+	tmpFile.Close()
+
+	hashHex := hex.EncodeToString(hashWriter.Sum(nil))
+
+	// Check for duplicate content by hash.
+	existing, err := h.store.GetByID(hashHex)
+	if err == nil && existing != nil {
+		respondError(w, r, http.StatusConflict, "File already exists: "+existing.ID)
+		return
+	}
+
+	// Create hash-based directory structure.
+	hashDir := storage.HashPath(h.dataDir, hashHex)
+	if err := os.MkdirAll(hashDir, 0o755); err != nil {
+		slog.Error("failed to create hash directory", "error", err)
+		respondError(w, r, http.StatusInternalServerError, "Storage error")
+		return
+	}
+
+	// Move temp file to final location (must be on same filesystem as dataDir).
+	originalPath := storage.OriginalPath(h.dataDir, hashHex)
+	if err := os.Rename(tmpFile.Name(), originalPath); err != nil {
+		slog.Error("failed to move temp file", "error", err)
+		os.RemoveAll(hashDir)
+		respondError(w, r, http.StatusInternalServerError, "Storage error")
+		return
+	}
+
+	// Write readme file if provided.
+	if readme != "" {
+		if err := os.WriteFile(storage.ReadmePath(h.dataDir, hashHex), []byte(readme), 0o644); err != nil {
+			slog.Error("failed to write readme", "error", err)
+			os.RemoveAll(hashDir)
+			respondError(w, r, http.StatusInternalServerError, "Storage error")
+			return
+		}
 	}
 
 	contentType := header.Header.Get("Content-Type")
@@ -148,29 +179,26 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		contentType = "video/mp4"
 	}
 
-	uploadedBy := userID
-
 	resource := &model.Resource{
-		ID:           id,
+		ID:           hashHex,
 		Title:        title,
-		Description:  description,
 		PasswordHash: string(hash),
 		Filename:     header.Filename,
 		FileSize:     header.Size,
 		ContentType:  contentType,
-		UploadedBy:   uploadedBy,
+		UploadedBy:   userID,
 		CategoryID:   categoryID,
 	}
 
 	if err := h.store.Insert(resource); err != nil {
 		slog.Error("failed to insert resource", "error", err)
-		os.Remove(dstPath)
+		os.RemoveAll(hashDir)
 		respondError(w, r, http.StatusInternalServerError, "Failed to save record")
 		return
 	}
 
 	slog.Info("resource uploaded",
-		"id", id,
+		"id", hashHex,
 		"title", title,
 		"size", header.Size,
 	)
@@ -228,8 +256,25 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 	// Sanitize — never expose password hash.
 	resource.PasswordHash = ""
 
+	// Read readme file if it exists.
+	readmeContent := ""
+	readmePath := storage.ReadmePath(h.dataDir, resource.ID)
+	if data, err := os.ReadFile(readmePath); err == nil {
+		readmeContent = string(data)
+	}
+
 	respondJSONOK(w, map[string]interface{}{
-		"resource": resource,
+		"id":           resource.ID,
+		"title":        resource.Title,
+		"readme":       readmeContent,
+		"filename":     resource.Filename,
+		"file_size":    resource.FileSize,
+		"content_type": resource.ContentType,
+		"views":        resource.Views,
+		"created_at":   resource.CreatedAt,
+		"updated_at":   resource.UpdatedAt,
+		"uploaded_by":  resource.UploadedBy,
+		"category_id":  resource.CategoryID,
 	})
 }
 
@@ -255,15 +300,15 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Path traversal prevention.
-	videosDir := filepath.Clean(filepath.Join(h.dataDir, "videos"))
-	filePath := filepath.Clean(filepath.Join(videosDir, id+".mp4"))
-	if !strings.HasPrefix(filePath, videosDir) {
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, id))
+	videoBase := filepath.Clean(filepath.Join(h.dataDir, "video"))
+	if !strings.HasPrefix(hashDir, videoBase) {
 		respondError(w, r, http.StatusBadRequest, "Invalid path")
 		return
 	}
 
 	err = h.store.DeleteWithFile(id, func() error {
-		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		if err := os.RemoveAll(hashDir); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		return nil
@@ -276,4 +321,41 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 
 	slog.Info("resource deleted via API", "id", id)
 	respondJSONOK(w, nil)
+}
+
+// UpdateReadme updates the readme file for a resource.
+// PUT /api/resources/{id}/readme
+func (h *ResourceHandler) UpdateReadme(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	// Verify resource exists.
+	_, err := h.store.GetByID(id)
+	if err != nil {
+		respondError(w, r, http.StatusNotFound, "Resource not found")
+		return
+	}
+
+	// Parse JSON body.
+	var body struct {
+		Readme string `json:"readme"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, r, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	// Write readme file.
+	readmePath := storage.ReadmePath(h.dataDir, id)
+	if err := os.MkdirAll(filepath.Dir(readmePath), 0o755); err != nil {
+		slog.Error("failed to create readme directory", "error", err)
+		respondError(w, r, http.StatusInternalServerError, "Storage error")
+		return
+	}
+	if err := os.WriteFile(readmePath, []byte(body.Readme), 0o644); err != nil {
+		slog.Error("failed to write readme", "error", err)
+		respondError(w, r, http.StatusInternalServerError, "Storage error")
+		return
+	}
+
+	respondJSONOK(w, map[string]interface{}{"ok": true})
 }
