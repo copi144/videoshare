@@ -1,0 +1,136 @@
+package transcode
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/exec"
+	"sync"
+	"time"
+
+	"videoshare/internal/model"
+)
+
+// Job represents a transcoding job.
+type Job struct {
+	ResourceID string
+	InputPath  string
+	OutputDir  string
+}
+
+// Queue manages a pool of transcoding workers.
+type Queue struct {
+	jobs   chan Job
+	cfg    *TranscodeConfig
+	store  *model.ResourceStore
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// NewQueue creates a transcode queue with the given worker count and resource store.
+func NewQueue(cfg *TranscodeConfig, store *model.ResourceStore) *Queue {
+	ctx, cancel := context.WithCancel(context.Background())
+	q := &Queue{
+		jobs:   make(chan Job, 100),
+		cfg:    cfg,
+		store:  store,
+		ctx:    ctx,
+		cancel: cancel,
+	}
+	for i := 0; i < cfg.Workers; i++ {
+		q.wg.Add(1)
+		go q.worker(i)
+	}
+	return q
+}
+
+// Submit adds a job to the queue (non-blocking).
+func (q *Queue) Submit(job Job) {
+	select {
+	case q.jobs <- job:
+		slog.Info("transcode job submitted", "resource_id", job.ResourceID)
+	default:
+		slog.Warn("transcode queue full, dropping job", "resource_id", job.ResourceID)
+	}
+}
+
+// worker processes jobs from the queue.
+func (q *Queue) worker(id int) {
+	defer q.wg.Done()
+	slog.Info("transcode worker started", "worker_id", id)
+	for {
+		select {
+		case job, ok := <-q.jobs:
+			if !ok {
+				return
+			}
+			slog.Info("transcode worker processing job", "worker_id", id, "resource_id", job.ResourceID)
+			q.processJob(job)
+		case <-q.ctx.Done():
+			return
+		}
+	}
+}
+
+// processJob runs the actual FFmpeg command with status tracking.
+func (q *Queue) processJob(job Job) {
+	// Update status to processing.
+	if err := q.store.UpdateTranscodeStatus(job.ResourceID, "processing"); err != nil {
+		slog.Error("failed to update transcode status", "resource_id", job.ResourceID, "error", err)
+		return
+	}
+
+	// Run FFmpeg with 30-minute timeout.
+	ctx, cancel := context.WithTimeout(q.ctx, 30*time.Minute)
+	defer cancel()
+
+	cmd := BuildHLSCommand(q.cfg, job.InputPath, job.OutputDir, DefaultQualities)
+	cmdWithCtx := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+
+	output, err := cmdWithCtx.CombinedOutput()
+	if err != nil {
+		slog.Error("transcode failed", "resource_id", job.ResourceID, "error", err, "output", string(output))
+		// Clean up partial HLS output.
+		os.RemoveAll(job.OutputDir)
+		if statusErr := q.store.UpdateTranscodeStatus(job.ResourceID, "failed"); statusErr != nil {
+			slog.Error("failed to update transcode status to failed", "resource_id", job.ResourceID, "error", statusErr)
+		}
+		return
+	}
+
+	slog.Info("transcode completed", "resource_id", job.ResourceID)
+	if err := q.store.UpdateTranscodeStatus(job.ResourceID, "done"); err != nil {
+		slog.Error("failed to update transcode status", "resource_id", job.ResourceID, "error", err)
+	}
+}
+
+// Shutdown gracefully stops all workers.
+func (q *Queue) Shutdown() {
+	close(q.jobs)
+	q.wg.Wait()
+	q.cancel()
+	slog.Info("transcode queue shut down")
+}
+
+// String returns a debug-friendly description of the queue.
+func (q *Queue) String() string {
+	return fmt.Sprintf("Queue{workers=%d, buffer=%d}", q.cfg.Workers, cap(q.jobs))
+}
+
+// StartupRecovery resets stalled 'processing' jobs back to 'pending' on server restart.
+func StartupRecovery(store *model.ResourceStore) {
+	stalled, err := store.ListByTranscodeStatus("processing")
+	if err != nil {
+		slog.Error("failed to scan for stalled transcodes", "error", err)
+		return
+	}
+	for _, r := range stalled {
+		if err := store.UpdateTranscodeStatus(r.ID, "pending"); err != nil {
+			slog.Error("failed to reset stalled transcode", "id", r.ID, "error", err)
+		} else {
+			slog.Info("reset stalled transcode to pending", "id", r.ID)
+		}
+	}
+}

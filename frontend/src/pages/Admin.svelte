@@ -24,6 +24,7 @@
     filename?: string;
     category_id: string;
     category_name: string;
+    transcode_status?: string;
   }
 
   interface Category {
@@ -341,6 +342,7 @@
         <tr>
           <th>Title</th>
           <th>Category</th>
+          <th>Status</th>
           <th>Views</th>
           <th>Size</th>
           <th>Share Link</th>
@@ -352,6 +354,19 @@
           <tr>
             <td>{res.title}</td>
             <td>{res.category_name}</td>
+            <td>
+              {#if res.transcode_status === 'done'}
+                <span style="color: var(--primary);">Ready</span>
+              {:else if res.transcode_status === 'processing'}
+                <span style="color: var(--warning);" aria-busy="true">Processing</span>
+              {:else if res.transcode_status === 'pending'}
+                <span style="color: var(--warning);">Pending</span>
+              {:else if res.transcode_status === 'failed'}
+                <span style="color: var(--invalid);">Failed</span>
+              {:else}
+                <span style="color: var(--muted-color, #888);">&mdash;</span>
+              {/if}
+            </td>
             <td>{res.views}</td>
             <td>{formatSize(res.file_size)}</td>
             <td>

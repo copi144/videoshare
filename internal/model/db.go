@@ -133,9 +133,15 @@ func migrate(db *sql.DB) error {
 	}
 
 	// Add new columns to resources table (idempotent — errors are expected if columns exist)
-	columns := []string{"uploaded_by", "category_id"}
+	columns := []string{"uploaded_by", "category_id", "transcode_status"}
 	for _, col := range columns {
-		_, err := db.Exec(fmt.Sprintf("ALTER TABLE resources ADD COLUMN %s TEXT REFERENCES users(id)", col))
+		def := "TEXT"
+		if col == "transcode_status" {
+			def = "TEXT NOT NULL DEFAULT 'none'"
+		} else {
+			def = "TEXT REFERENCES users(id)"
+		}
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE resources ADD COLUMN %s %s", col, def))
 		if err != nil {
 			// Column already exists or other error — log and continue
 			slog.Debug("column may already exist", "column", col, "error", err)

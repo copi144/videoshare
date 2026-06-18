@@ -69,6 +69,8 @@ All configuration is via environment variables:
 | `DATA_DIR` | `./data` | Data directory for SQLite DB and video storage |
 | `ADMIN_USERNAME` | `admin` | Admin login username |
 | `COOKIE_SECURE` | `false` | Set to `true` when using HTTPS |
+| `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg binary |
+| `TRANSCODE_WORKERS` | `1` | Number of concurrent transcodes |
 
 ## Docker Deployment
 

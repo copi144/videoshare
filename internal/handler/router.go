@@ -12,13 +12,15 @@ import (
 
 	"videoshare/internal/middleware"
 	"videoshare/internal/model"
+	"videoshare/internal/transcode"
 	"videoshare/internal/web"
 )
 
 // NewRouter creates and configures the chi router with all route groups.
 func NewRouter(sm *scs.SessionManager,
 	resourceStore *model.ResourceStore, dataDir string, db *sql.DB,
-	userStore *model.UserStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore) http.Handler {
+	userStore *model.UserStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore,
+	transcodeQueue *transcode.Queue) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -39,7 +41,7 @@ func NewRouter(sm *scs.SessionManager,
 	// Create handlers with dependency injection.
 	userH := NewUserHandler(userStore, sm)
 	authH := NewAuthHandler(resourceStore, sm)
-	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, sm, userStore, playlistStore)
+	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, sm, userStore, playlistStore, transcodeQueue)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
 	categoryH := NewCategoryHandler(categoryStore, userStore, sm)
@@ -95,6 +97,9 @@ func NewRouter(sm *scs.SessionManager,
 
 	// Video streaming — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/video/{id}", streamH.ServeVideo)
+
+	// HLS streaming — accessible by both system users and share-link viewers
+	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/video/{id}/hls/*", streamH.ServeHLS)
 
 	// Resource detail — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/resources/{id}", resourceH.GetResourceAPI)

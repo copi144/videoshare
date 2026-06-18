@@ -8,17 +8,18 @@ import (
 
 // Resource represents a video resource stored in the database.
 type Resource struct {
-	ID           string    `json:"id"`
-	Title        string    `json:"title"`
-	PasswordHash string    `json:"-"`
-	Filename     string    `json:"filename"`
-	FileSize     int64     `json:"file_size"`
-	ContentType  string    `json:"content_type"`
-	Views        int       `json:"views"`
-	UploadedBy   string    `json:"uploaded_by"`
-	CategoryID   string    `json:"category_id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	Title            string    `json:"title"`
+	PasswordHash     string    `json:"-"`
+	Filename         string    `json:"filename"`
+	FileSize         int64     `json:"file_size"`
+	ContentType      string    `json:"content_type"`
+	Views            int       `json:"views"`
+	UploadedBy       string    `json:"uploaded_by"`
+	CategoryID       string    `json:"category_id"`
+	TranscodeStatus  string    `json:"transcode_status"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // ResourceStore provides CRUD operations for resources.
@@ -46,7 +47,7 @@ func (s *ResourceStore) Insert(r *Resource) error {
 
 // GetByID retrieves a resource by its ID.
 func (s *ResourceStore) GetByID(id string) (*Resource, error) {
-	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, created_at, updated_at
+	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, transcode_status, created_at, updated_at
 		FROM resources WHERE id = ?`
 
 	r := &Resource{}
@@ -54,7 +55,7 @@ func (s *ResourceStore) GetByID(id string) (*Resource, error) {
 		&r.ID, &r.Title, &r.PasswordHash,
 		&r.Filename, &r.FileSize, &r.ContentType,
 		&r.Views, &r.UploadedBy, &r.CategoryID,
-		&r.CreatedAt, &r.UpdatedAt,
+		&r.TranscodeStatus, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -64,7 +65,7 @@ func (s *ResourceStore) GetByID(id string) (*Resource, error) {
 
 // List returns all resources ordered by creation date descending.
 func (s *ResourceStore) List() ([]*Resource, error) {
-	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, created_at, updated_at
+	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, transcode_status, created_at, updated_at
 		FROM resources ORDER BY created_at DESC`
 
 	rows, err := s.db.Query(query)
@@ -80,7 +81,7 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 			&r.ID, &r.Title, &r.PasswordHash,
 			&r.Filename, &r.FileSize, &r.ContentType,
 			&r.Views, &r.UploadedBy, &r.CategoryID,
-			&r.CreatedAt, &r.UpdatedAt,
+			&r.TranscodeStatus, &r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -91,7 +92,7 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 
 // ListByUploader returns all resources uploaded by a specific user, ordered by creation date descending.
 func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
-	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, created_at, updated_at
+	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, transcode_status, created_at, updated_at
 		FROM resources WHERE uploaded_by = ? ORDER BY created_at DESC`
 
 	rows, err := s.db.Query(query, userID)
@@ -107,7 +108,7 @@ func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
 			&r.ID, &r.Title, &r.PasswordHash,
 			&r.Filename, &r.FileSize, &r.ContentType,
 			&r.Views, &r.UploadedBy, &r.CategoryID,
-			&r.CreatedAt, &r.UpdatedAt,
+			&r.TranscodeStatus, &r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -143,6 +144,39 @@ func (s *ResourceStore) DeleteWithFile(id string, fileCleanup func() error) erro
 	}
 
 	return tx.Commit()
+}
+
+// UpdateTranscodeStatus updates the transcode status for a resource.
+func (s *ResourceStore) UpdateTranscodeStatus(id, status string) error {
+	_, err := s.db.Exec("UPDATE resources SET transcode_status = ? WHERE id = ?", status, id)
+	return err
+}
+
+// ListByTranscodeStatus returns all resources with the given transcode status.
+func (s *ResourceStore) ListByTranscodeStatus(status string) ([]*Resource, error) {
+	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, transcode_status, created_at, updated_at
+		FROM resources WHERE transcode_status = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var resources []*Resource
+	for rows.Next() {
+		r := &Resource{}
+		if err := rows.Scan(
+			&r.ID, &r.Title, &r.PasswordHash,
+			&r.Filename, &r.FileSize, &r.ContentType,
+			&r.Views, &r.UploadedBy, &r.CategoryID,
+			&r.TranscodeStatus, &r.CreatedAt, &r.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		resources = append(resources, r)
+	}
+	return resources, rows.Err()
 }
 
 // IncrementViews increases the view count for a resource.

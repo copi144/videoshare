@@ -13,6 +13,7 @@ import (
 	"videoshare/internal/config"
 	"videoshare/internal/handler"
 	"videoshare/internal/model"
+	"videoshare/internal/transcode"
 )
 
 func main() {
@@ -76,7 +77,15 @@ func main() {
 	categoryStore := model.NewCategoryStore(db)
 	playlistStore := model.NewPlaylistStore(db)
 
-	router := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore)
+	// Initialize transcode queue with access to the resource store for status updates.
+	tc := transcode.LoadTranscodeConfig()
+	tq := transcode.NewQueue(tc, resourceStore)
+	defer tq.Shutdown()
+
+	// Reset stalled 'processing' jobs to 'pending' on startup.
+	transcode.StartupRecovery(resourceStore)
+
+	router := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, tq)
 
 	addr := cfg.Addr
 	slog.Info("starting server", "addr", addr)

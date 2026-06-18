@@ -7,7 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o videoserver ./cmd/server
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates ffmpeg
 WORKDIR /app
 COPY --from=builder /build/videoserver .
 EXPOSE 8080

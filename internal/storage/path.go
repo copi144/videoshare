@@ -36,6 +36,12 @@ func ReadmePath(dataDir, hash string) string {
 	return filepath.Join(HashPath(dataDir, hash), "readme")
 }
 
+// HLSPath returns the HLS output directory for a resource:
+// dataDir/video/{xx}/{yy}/{hash}/hls
+func HLSPath(dataDir, hash string) string {
+	return filepath.Join(HashPath(dataDir, hash), "hls")
+}
+
 // ComputeHash reads from reader and returns the BLAKE3-256 hex digest.
 func ComputeHash(r io.Reader) (string, error) {
 	hasher := blake3.New(32, nil)

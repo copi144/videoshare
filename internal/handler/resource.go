@@ -18,30 +18,34 @@ import (
 	"videoshare/internal/middleware"
 	"videoshare/internal/model"
 	"videoshare/internal/storage"
+	"videoshare/internal/transcode"
 	"videoshare/internal/upload"
 )
 
 // ResourceHandler handles CRUD operations for video resources.
 type ResourceHandler struct {
-	store         *model.ResourceStore
-	categoryStore *model.CategoryStore
-	playlistStore *model.PlaylistStore
-	dataDir       string
-	sm            *scs.SessionManager
-	userStore     *model.UserStore
+	store           *model.ResourceStore
+	categoryStore   *model.CategoryStore
+	playlistStore   *model.PlaylistStore
+	transcodeQueue  *transcode.Queue
+	dataDir         string
+	sm              *scs.SessionManager
+	userStore       *model.UserStore
 }
 
 // NewResourceHandler creates a new ResourceHandler with injected dependencies.
 func NewResourceHandler(store *model.ResourceStore, categoryStore *model.CategoryStore,
 	dataDir string,
-	sm *scs.SessionManager, userStore *model.UserStore, playlistStore *model.PlaylistStore) *ResourceHandler {
+	sm *scs.SessionManager, userStore *model.UserStore, playlistStore *model.PlaylistStore,
+	transcodeQueue *transcode.Queue) *ResourceHandler {
 	return &ResourceHandler{
-		store:         store,
-		categoryStore: categoryStore,
-		playlistStore: playlistStore,
-		dataDir:       dataDir,
-		sm:            sm,
-		userStore:     userStore,
+		store:          store,
+		categoryStore:  categoryStore,
+		playlistStore:  playlistStore,
+		transcodeQueue: transcodeQueue,
+		dataDir:        dataDir,
+		sm:             sm,
+		userStore:      userStore,
 	}
 }
 
@@ -203,6 +207,13 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		"size", header.Size,
 	)
 
+	// Submit transcode job (non-blocking).
+	h.transcodeQueue.Submit(transcode.Job{
+		ResourceID: hashHex,
+		InputPath:  originalPath,
+		OutputDir:  storage.HLSPath(h.dataDir, hashHex),
+	})
+
 	respondJSONOK(w, map[string]interface{}{
 		"redirect": "/admin",
 	})
@@ -264,17 +275,18 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondJSONOK(w, map[string]interface{}{
-		"id":           resource.ID,
-		"title":        resource.Title,
-		"readme":       readmeContent,
-		"filename":     resource.Filename,
-		"file_size":    resource.FileSize,
-		"content_type": resource.ContentType,
-		"views":        resource.Views,
-		"created_at":   resource.CreatedAt,
-		"updated_at":   resource.UpdatedAt,
-		"uploaded_by":  resource.UploadedBy,
-		"category_id":  resource.CategoryID,
+		"id":               resource.ID,
+		"title":            resource.Title,
+		"readme":           readmeContent,
+		"filename":         resource.Filename,
+		"file_size":        resource.FileSize,
+		"content_type":     resource.ContentType,
+		"views":            resource.Views,
+		"transcode_status": resource.TranscodeStatus,
+		"created_at":       resource.CreatedAt,
+		"updated_at":       resource.UpdatedAt,
+		"uploaded_by":      resource.UploadedBy,
+		"category_id":      resource.CategoryID,
 	})
 }
 
