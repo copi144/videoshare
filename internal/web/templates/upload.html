@@ -7,26 +7,26 @@
 {{end}}
 
 {{$data := .Data}}
-{{$csrf := .CSRFToken}}
+
+<div id="error-message" class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
 
 <article>
     <header><h2>Upload New Video</h2></header>
-    <form action="/api/upload" method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="_csrf" value="{{$csrf}}">
+    <form action="/api/upload" method="POST" enctype="multipart/form-data" id="upload-form">
         <div class="grid">
             <label for="title">Title
                 <input type="text" id="title" name="title" placeholder="My cool video" required>
             </label>
-            <label for="password">Access Password
-                <input type="text" id="password" name="password" placeholder="Share password" required>
+            <label for="password">Access Password <small>(not required for Global category)</small>
+                <input type="text" id="password" name="password" placeholder="Share password">
             </label>
         </div>
         <label for="description">Description (optional)
             <textarea id="description" name="description" placeholder="What's this video about?"></textarea>
         </label>
-        <label for="category">Category (optional)
-            <select id="category" name="category_id">
-                <option value="">— No category —</option>
+        <label for="category">Category
+            <select id="category" name="category_id" required>
+                <option value="">— Select a category —</option>
                 {{range $cat := $data.Categories}}
                 <option value="{{$cat.ID}}">{{$cat.Name}}</option>
                 {{end}}
@@ -35,9 +35,15 @@
         <label for="file">Video File
             <input type="file" id="file" name="file" accept="video/*" required>
         </label>
+        <div class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
         <button type="submit">Upload</button>
     </form>
 </article>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    VS.hijackUploadForm('upload-form', '/api/upload');
+});
+</script>
 
 <h2>Uploaded Videos</h2>
 <table role="grid">
@@ -70,11 +76,7 @@
             </td>
             <td>
                 <a href="/s/{{.ID}}" role="button" class="outline">Share</a>
-                <form action="/api/resource/{{.ID}}" method="POST" class="inline-form">
-                    <input type="hidden" name="_method" value="DELETE">
-                    <input type="hidden" name="_csrf" value="{{$csrf}}">
-                    <button type="submit" class="secondary outline">Delete</button>
-                </form>
+                <button id="del-{{.ID}}" class="secondary outline" style="display:inline">Delete</button>
             </td>
         </tr>
         {{else}}
@@ -107,11 +109,7 @@
                 <td>{{.CreatedAt}}</td>
                 <td>
                     <a href="/s/{{.ID}}" role="button" class="outline">Share</a>
-                    <form action="/api/resource/{{.ID}}" method="POST" class="inline-form">
-                        <input type="hidden" name="_method" value="DELETE">
-                        <input type="hidden" name="_csrf" value="{{$csrf}}">
-                        <button type="submit" class="secondary outline">Delete</button>
-                    </form>
+                    <button id="del-ua-{{.ID}}" class="secondary outline" style="display:inline">Delete</button>
                 </td>
             </tr>
             {{else}}
@@ -123,5 +121,17 @@
     <p>All videos are assigned to playlists.</p>
     {{end}}
 </details>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    {{range .Resources}}
+    VS.setupDeleteButton('del-{{.ID}}', '/api/resource/{{.ID}}', 'Delete this video?');
+    {{end}}
+    {{if $data.UnassignedVideos}}
+    {{range $data.UnassignedVideos}}
+    VS.setupDeleteButton('del-ua-{{.ID}}', '/api/resource/{{.ID}}', 'Delete this video?');
+    {{end}}
+    {{end}}
+});
+</script>
 {{end}}
 {{template "layout" .}}

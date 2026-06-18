@@ -15,7 +15,6 @@ type TemplateData struct {
 	Resources  interface{}
 	ResourceID string
 	Error      string
-	CSRFToken  string
 	Data       interface{}
 }
 

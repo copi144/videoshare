@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{block "title" .}}VideoShare{{end}}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/pico.min.css">
     <style>
         main.container { padding-top: 2rem; }
         .video-container { max-width: 100%; margin: 1rem 0; }
@@ -25,15 +25,20 @@
 			<li><small>{{.Username}} ({{.UserRole}})</small></li>
 			<li><a href="/admin">Admin</a></li>
 			{{if eq $.UserRole "admin"}}
+			<li><a href="/admin/users">Users</a></li>
 			<li><a href="/admin/categories">Categories</a></li>
 			<li><a href="/admin/playlists">Playlists</a></li>
 			{{end}}
 			<li>
-                <form action="/logout" method="POST" class="inline-form">
-                    <input type="hidden" name="_csrf" value="{{.CSRFToken}}">
+                <form action="/logout" method="POST" class="inline-form" id="logout-form">
                     <button type="submit" class="outline secondary">Logout</button>
                 </form>
             </li>
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                VS.hijackForm('logout-form', '/api/logout', 'POST');
+            });
+            </script>
             {{else}}
             <li><a href="/login">Login</a></li>
             {{end}}
@@ -42,6 +47,7 @@
     <main class="container">
         {{template "content" .}}
     </main>
+    <script src="/static/api.js"></script>
 </body>
 </html>
 {{end}}

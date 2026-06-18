@@ -12,16 +12,23 @@ import (
 
 	"videoshare/internal/middleware"
 	"videoshare/internal/model"
+	"videoshare/internal/web"
 )
 
 // NewRouter creates and configures the chi router with all route groups.
-// csrfKey is a 32-byte hex-encoded key; csrfSecure controls the Secure flag on the CSRF cookie.
-func NewRouter(sm *scs.SessionManager, templates fs.FS, csrfKey []byte, csrfSecure bool,
+func NewRouter(sm *scs.SessionManager, templates fs.FS,
 	resourceStore *model.ResourceStore, dataDir string, db *sql.DB,
 	userStore *model.UserStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore) http.Handler {
 	r := chi.NewRouter()
 
-	// Health check — before any middleware (no auth, no CSRF required)
+	// Global middleware
+	r.Use(chimw.Logger)
+	r.Use(chimw.Recoverer)
+	r.Use(chimw.RealIP)
+	r.Use(sm.LoadAndSave)
+	r.Use(middleware.RateLimit(60, time.Minute))
+
+	// Health check
 	r.Get("/health", NewHealthHandler(db).ServeHealth)
 
 	// Homepage — simple redirect
@@ -29,35 +36,17 @@ func NewRouter(sm *scs.SessionManager, templates fs.FS, csrfKey []byte, csrfSecu
 		http.Redirect(w, r, "/admin", http.StatusFound)
 	})
 
-	// Global middleware
-	// Method override: support _method form field for HTML forms
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodPost {
-				if m := r.FormValue("_method"); m != "" {
-					r.Method = m
-				}
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
-	r.Use(chimw.Logger)
-	r.Use(chimw.Recoverer)
-	r.Use(chimw.RealIP)
-	r.Use(sm.LoadAndSave)
-	r.Use(middleware.CSRFProtection(csrfKey, csrfSecure))
-	r.Use(middleware.RateLimit(60, time.Minute))
-
 	// Create handlers with dependency injection.
 	userH := NewUserHandler(userStore, sm, templates)
 	authH := NewAuthHandler(resourceStore, sm, templates)
 	resourceH := NewResourceHandler(resourceStore, categoryStore, templates, dataDir, sm, userStore, playlistStore)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm, templates)
+	categoryH := NewCategoryHandler(categoryStore, userStore, sm, templates)
 
 	// User login/logout — public routes
 	r.Get("/login", userH.ServeLoginPage)
-	r.Post("/login", userH.Login)
+	r.With(middleware.RateLimit(10, time.Minute)).Post("/login", userH.Login)
 
 	// Public routes — password entry for shared videos (tighter rate limit)
 	r.Route("/s/{id}", func(r chi.Router) {
@@ -79,18 +68,26 @@ func NewRouter(sm *scs.SessionManager, templates fs.FS, csrfKey []byte, csrfSecu
 
 		r.Get("/admin", resourceH.List)
 		r.Post("/api/upload", resourceH.Upload)
-		r.Delete("/api/resource/{id}", resourceH.Delete)
+		r.Delete("/api/resource/{id}", resourceH.DeleteResourceAPI)
 		r.Post("/logout", userH.Logout)
+
+		// JSON API routes that require auth
+		r.Get("/api/resources", resourceH.ListResourcesAPI)
+		r.Post("/api/logout", userH.ServeLogoutAPI)
 
 		// Category management — admin only
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAdmin(sm))
 
-			categoryH := NewCategoryHandler(categoryStore, userStore, sm, templates)
 			r.Get("/admin/categories", categoryH.ServeCategoriesPage)
 			r.Post("/admin/categories", categoryH.CreateCategory)
 			r.Delete("/admin/categories/{id}/delete", categoryH.DeleteCategory)
 			r.Post("/admin/categories/{id}/uploaders", categoryH.AssignUploaders)
+
+			// JSON API routes for categories (admin only)
+			r.Post("/api/categories", categoryH.CreateCategoryAPI)
+			r.Delete("/api/categories/{id}", categoryH.DeleteCategoryAPI)
+			r.Post("/api/categories/{id}/uploaders", categoryH.AssignUploadersAPI)
 		})
 
 		// Playlist management — admin only
@@ -102,14 +99,38 @@ func NewRouter(sm *scs.SessionManager, templates fs.FS, csrfKey []byte, csrfSecu
 			r.Delete("/admin/playlists/{id}/delete", playlistH.DeletePlaylist)
 			r.Post("/admin/playlists/{id}/videos", playlistH.AddVideoToPlaylist)
 			r.Post("/admin/playlists/{id}/videos/remove", playlistH.RemoveVideoFromPlaylist)
+
+			// JSON API routes for playlists (admin only)
+			r.Post("/api/playlists", playlistH.CreatePlaylistAPI)
+			r.Delete("/api/playlists/{id}", playlistH.DeletePlaylistAPI)
+			r.Post("/api/playlists/{id}/videos", playlistH.AddVideoAPI)
+			r.Delete("/api/playlists/{id}/videos/{resourceId}", playlistH.RemoveVideoAPI)
+		})
+
+		// User management — admin only
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAdmin(sm))
+
+			r.Get("/admin/users", userH.ServeUsersPage)
+			r.Post("/admin/users", userH.CreateUser)
+
+			// JSON API routes for users (admin only)
+			r.Post("/api/users", userH.CreateUserAPI)
 		})
 	})
+
+	// JSON API routes that are public
+	r.Post("/api/login", userH.ServeLoginAPI)
+	r.Post("/api/s/{id}/auth", authH.AuthenticateAPI)
 
 	// Video streaming — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/video/{id}", streamH.ServeVideo)
 
 	// Static file serving for embedded assets
-	// TODO: serve embedded static files from web directory
+	staticFS := web.Static()
+	r.Get("/static/*", func(w http.ResponseWriter, r *http.Request) {
+		http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))).ServeHTTP(w, r)
+	})
 
 	return r
 }

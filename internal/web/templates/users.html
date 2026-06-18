@@ -1,0 +1,66 @@
+{{define "title"}}Users — VideoShare{{end}}
+{{define "content"}}
+<h2>User Management</h2>
+
+{{if .Data.CreatedUser}}
+{{$cu := .Data.CreatedUser}}
+<article>
+    <header><strong>User Created: {{$cu.Username}}</strong></header>
+    <p>Share this QR code with the user. They will not be able to see it again!</p>
+    <div style="text-align:center;margin:1rem 0;">
+        <img src="{{$cu.QRDataURI}}" alt="TOTP QR Code" style="width:200px;height:200px;image-rendering:pixelated;">
+    </div>
+    <details>
+        <summary>Manual setup</summary>
+        <p><strong>TOTP URI:</strong> <code style="word-break:break-all;">{{$cu.TOTPURI}}</code></p>
+        <p><strong>Secret:</strong> <code>{{$cu.Secret}}</code></p>
+    </details>
+</article>
+{{end}}
+
+<article>
+    <header><strong>Create Uploader</strong></header>
+    <form action="/admin/users" method="POST" id="create-user-form">
+        <label for="username">Username
+            <input type="text" id="username" name="username" placeholder="uploader-name" required>
+        </label>
+        <div id="error-message" class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
+        <button type="submit">Create User</button>
+    </form>
+</article>
+
+<h3>Existing Users</h3>
+<table role="grid">
+    <thead>
+        <tr><th>Username</th><th>Role</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+    {{range .Data.Users}}
+        <tr><td>{{.Username}}</td><td>{{.Role}}</td><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+    {{end}}
+    </tbody>
+</table>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    VS.hijackForm('create-user-form', '/api/users', 'POST', function(data) {
+        // Show the TOTP info in a modal/alert before redirecting
+        if (data.qr_image) {
+            var html = '<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;">' +
+                '<div style="background:white;padding:2rem;border-radius:8px;max-width:500px;text-align:center;">' +
+                '<h3>User Created: ' + data.totp_secret.substring(0, 8) + '...</h3>' +
+                '<p>Share this QR code with the user. They will not see it again!</p>' +
+                '<img src="' + data.qr_image + '" alt="TOTP QR Code" style="width:200px;height:200px;image-rendering:pixelated;">' +
+                '<p><small>Secret: <code>' + data.totp_secret + '</code></small></p>' +
+                '<button onclick="window.location.href=\'' + data.redirect + '\'" class="outline">Continue</button>' +
+                '</div></div>';
+            var div = document.createElement('div');
+            div.innerHTML = html;
+            document.body.appendChild(div);
+        } else {
+            window.location.href = data.redirect;
+        }
+    });
+});
+</script>
+{{end}}
+{{template "layout" .}}

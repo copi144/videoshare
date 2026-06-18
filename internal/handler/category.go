@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -9,7 +10,6 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/gorilla/csrf"
 
 	"videoshare/internal/middleware"
 	"videoshare/internal/model"
@@ -96,7 +96,6 @@ func (h *CategoryHandler) ServeCategoriesPage(w http.ResponseWriter, r *http.Req
 		IsLoggedIn: true,
 		Username:   username,
 		UserRole:   userRole,
-		CSRFToken:  csrf.Token(r),
 		Error:      errorMsg,
 		Data: map[string]interface{}{
 			"Categories": categoryData,
@@ -146,6 +145,11 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if id == model.GlobalCategoryID {
+		http.Redirect(w, r, "/admin/categories?error="+url.QueryEscape("Cannot delete the Global category"), http.StatusSeeOther)
+		return
+	}
+
 	if err := h.categoryStore.Delete(id); err != nil {
 		slog.Error("failed to delete category", "id", id, "error", err)
 		http.Redirect(w, r, "/admin/categories?error="+url.QueryEscape("Failed to delete category"), http.StatusSeeOther)
@@ -175,4 +179,93 @@ func (h *CategoryHandler) AssignUploaders(w http.ResponseWriter, r *http.Request
 
 	slog.Info("uploaders assigned to category", "category_id", id, "count", len(userIDs))
 	http.Redirect(w, r, "/admin/categories", http.StatusSeeOther)
+}
+
+// CreateCategoryAPI handles JSON category creation.
+// POST /api/categories
+func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		respondJSONError(w, "Category name is required", http.StatusBadRequest)
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context(), h.sm)
+
+	cat := &model.Category{
+		ID:          uuid.New().String(),
+		Name:        req.Name,
+		Description: req.Description,
+		CreatedBy:   userID,
+	}
+
+	if err := h.categoryStore.Insert(cat); err != nil {
+		slog.Error("failed to create category", "error", err)
+		respondJSONError(w, "Failed to create category", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("category created via API", "id", cat.ID, "name", req.Name)
+	respondJSONOK(w, map[string]interface{}{
+		"redirect": "/admin/categories",
+	})
+}
+
+// DeleteCategoryAPI handles JSON category deletion.
+// DELETE /api/categories/{id}
+func (h *CategoryHandler) DeleteCategoryAPI(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondJSONError(w, "Missing category ID", http.StatusBadRequest)
+		return
+	}
+
+	if id == model.GlobalCategoryID {
+		respondJSONError(w, "Cannot delete the Global category", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.categoryStore.Delete(id); err != nil {
+		slog.Error("failed to delete category", "id", id, "error", err)
+		respondJSONError(w, "Failed to delete category", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("category deleted via API", "id", id)
+	respondJSONOK(w, nil)
+}
+
+// AssignUploadersAPI handles JSON assignment of uploaders to a category.
+// POST /api/categories/{id}/uploaders
+func (h *CategoryHandler) AssignUploadersAPI(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondJSONError(w, "Missing category ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.categoryStore.AssignUploaders(id, req.UserIDs); err != nil {
+		slog.Error("failed to assign uploaders", "category_id", id, "error", err)
+		respondJSONError(w, "Failed to assign uploaders", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("uploaders assigned via API", "category_id", id, "count", len(req.UserIDs))
+	respondJSONOK(w, nil)
 }

@@ -7,12 +7,12 @@
 {{end}}
 
 {{$data := .Data}}
-{{$csrf := .CSRFToken}}
+
+<div id="error-message" class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
 
 <article>
     <header><h2>Create Playlist</h2></header>
-    <form action="/admin/playlists" method="POST">
-        <input type="hidden" name="_csrf" value="{{$csrf}}">
+    <form action="/admin/playlists" method="POST" id="create-playlist-form">
         <div class="grid">
             <label for="name">Name
                 <input type="text" id="name" name="name" placeholder="Playlist name" required>
@@ -34,9 +34,15 @@
                 <input type="number" id="sort_order" name="sort_order" value="0" min="0">
             </label>
         </div>
+        <div class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
         <button type="submit">Create Playlist</button>
     </form>
 </article>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    VS.hijackForm('create-playlist-form', '/api/playlists', 'POST');
+});
+</script>
 
 <h2>Playlists by Category</h2>
 
@@ -53,11 +59,7 @@
         <article style="margin-left:1rem; border-left: 3px solid var(--pico-primary);">
             <header>
                 <strong>{{$pl.Name}}</strong>
-                <form action="/admin/playlists/{{$pl.ID}}/delete" method="POST" class="inline-form" style="float:right">
-                    <input type="hidden" name="_csrf" value="{{$csrf}}">
-                    <input type="hidden" name="_method" value="DELETE">
-                    <button type="submit" class="secondary outline small">Delete</button>
-                </form>
+                <button id="del-pl-{{$pl.ID}}" class="secondary outline small" style="float:right">Delete</button>
             </header>
             <p><small>{{$pl.Description}}</small></p>
 
@@ -76,11 +78,7 @@
                     <tr>
                         <td>{{$vid.Title}}</td>
                         <td>
-                            <form action="/admin/playlists/{{$pl.ID}}/videos/remove" method="POST" class="inline-form">
-                                <input type="hidden" name="_csrf" value="{{$csrf}}">
-                                <input type="hidden" name="resource_id" value="{{$vid.ID}}">
-                                <button type="submit" class="secondary outline small">Remove</button>
-                            </form>
+                            <button id="rm-vid-{{$pl.ID}}-{{$vid.ID}}" class="secondary outline small">Remove</button>
                         </td>
                     </tr>
                     {{end}}
@@ -92,8 +90,7 @@
 
             <details>
                 <summary>Add Video</summary>
-                <form action="/admin/playlists/{{$pl.ID}}/videos" method="POST">
-                    <input type="hidden" name="_csrf" value="{{$csrf}}">
+                <form action="/admin/playlists/{{$pl.ID}}/videos" method="POST" id="add-video-form-{{$pl.ID}}">
                     <div class="grid">
                         <select name="resource_id" required>
                             <option value="">— Select video —</option>
@@ -103,9 +100,19 @@
                         </select>
                         <button type="submit" class="outline">Add</button>
                     </div>
+                    <div class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
                 </form>
             </details>
         </article>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            VS.setupDeleteButton('del-pl-{{$pl.ID}}', '/api/playlists/{{$pl.ID}}', 'Delete this playlist?');
+            VS.hijackForm('add-video-form-{{$pl.ID}}', '/api/playlists/{{$pl.ID}}/videos', 'POST');
+            {{range $vid := $videos}}
+            VS.setupDeleteButton('rm-vid-{{$pl.ID}}-{{$vid.ID}}', '/api/playlists/{{$pl.ID}}/videos/{{$vid.ID}}', 'Remove this video from the playlist?');
+            {{end}}
+        });
+        </script>
         {{end}}
     {{else}}
     <p><small>No playlists in this category.</small></p>

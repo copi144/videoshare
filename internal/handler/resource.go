@@ -85,6 +85,23 @@ func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Always include the Global (public) category as the first option.
+	globalCat, gErr := h.categoryStore.GetByID(model.GlobalCategoryID)
+	if gErr != nil {
+		slog.Error("failed to load global category", "error", gErr)
+	} else {
+		hasGlobal := false
+		for _, c := range categories {
+			if c.ID == model.GlobalCategoryID {
+				hasGlobal = true
+				break
+			}
+		}
+		if !hasGlobal {
+			categories = append([]*model.Category{globalCat}, categories...)
+		}
+	}
+
 	// Load all playlists for the add-to-playlist dropdown.
 	var allPlaylists []*model.Playlist
 	allPlaylists, err = h.playlistStore.ListAll()
@@ -152,6 +169,50 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	categoryID := r.FormValue("category_id")
 
+	// Category is required.
+	if categoryID == "" {
+		respondError(w, r, http.StatusBadRequest, "Category is required")
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context(), h.sm)
+	userRole := middleware.GetUserRole(r.Context(), h.sm)
+
+	// Non-admin users: verify authorization for non-global categories.
+	if userRole != "admin" && categoryID != model.GlobalCategoryID {
+		authorized, authErr := h.categoryStore.IsUploaderAuthorized(userID, categoryID)
+		if authErr != nil {
+			slog.Error("failed to check category authorization", "error", authErr)
+			respondError(w, r, http.StatusInternalServerError, "Authorization error")
+			return
+		}
+		if !authorized {
+			respondError(w, r, http.StatusForbidden, "You are not authorized to upload to this category")
+			return
+		}
+	}
+
+	// Global category videos are public — no password needed.
+	// All other categories require a password.
+	var (
+		hash []byte
+		err  error
+	)
+	if categoryID == model.GlobalCategoryID {
+		hash = nil // public video, no password hashing
+	} else {
+		if password == "" {
+			respondError(w, r, http.StatusBadRequest, "Password is required for non-global categories")
+			return
+		}
+		hash, err = bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			slog.Error("failed to hash password", "error", err)
+			respondError(w, r, http.StatusInternalServerError, "Failed to secure password")
+			return
+		}
+	}
+
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		slog.Error("failed to get uploaded file", "error", err)
@@ -161,40 +222,13 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	// Validate the uploaded file at the boundary.
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
-	username := middleware.GetUsername(r.Context(), h.sm)
-
 	if err := upload.ValidateUpload(file, header); err != nil {
 		slog.Error("upload validation failed", "error", err)
-		// Load categories for the dropdown on re-render.
-		var categories []*model.Category
-		if userRole == "admin" {
-			categories, _ = h.categoryStore.List()
-		} else {
-			categories, _ = h.categoryStore.ListByUploader(middleware.GetUserID(r.Context(), h.sm))
-		}
-		_ = parseAndRender(w, h.templates, "upload.html", &TemplateData{
-			Title:      "Upload — VideoShare",
-			Error:      err.Error(),
-			IsLoggedIn: true,
-			Username:   username,
-			UserRole:   userRole,
-			Data: map[string]interface{}{
-				"Categories": categories,
-			},
-		})
+		respondJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	id := uuid.New().String()
-
-	// Hash the share password — fail fast on error.
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		slog.Error("failed to hash password", "error", err)
-		respondError(w, r, http.StatusInternalServerError, "Failed to secure password")
-		return
-	}
 
 	// Ensure the videos directory exists.
 	videosDir := filepath.Join(h.dataDir, "videos")
@@ -226,7 +260,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		contentType = "video/mp4"
 	}
 
-	uploadedBy := middleware.GetUserID(r.Context(), h.sm)
+	uploadedBy := userID
 
 	resource := &model.Resource{
 		ID:           id,
@@ -253,12 +287,43 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		"size", header.Size,
 	)
 
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	respondJSONOK(w, map[string]interface{}{
+		"redirect": "/admin",
+	})
 }
 
-// Delete removes a video resource and its file.
+// ListResourcesAPI returns all resources as JSON (for populating dropdowns).
+// GET /api/resources
+func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Request) {
+	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	userID := middleware.GetUserID(r.Context(), h.sm)
+
+	var resources []*model.Resource
+	var err error
+	if userRole == "admin" {
+		resources, err = h.store.List()
+	} else {
+		resources, err = h.store.ListByUploader(userID)
+	}
+	if err != nil {
+		slog.Error("failed to list resources", "error", err)
+		respondJSONError(w, "Failed to list resources", http.StatusInternalServerError)
+		return
+	}
+
+	// Sanitize for display.
+	for _, res := range resources {
+		res.PasswordHash = ""
+	}
+
+	respondJSONOK(w, map[string]interface{}{
+		"resources": resources,
+	})
+}
+
+// DeleteResourceAPI removes a video resource and its file.
 // DELETE /api/resource/{id}
-func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Look up the resource to check ownership before deleting.
@@ -297,6 +362,6 @@ func (h *ResourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("resource deleted", "id", id)
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	slog.Info("resource deleted via API", "id", id)
+	respondJSONOK(w, nil)
 }

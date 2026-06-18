@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/gorilla/csrf"
 
 	"videoshare/internal/middleware"
 	"videoshare/internal/model"
@@ -106,7 +106,6 @@ func (h *PlaylistHandler) ServePlaylistsPage(w http.ResponseWriter, r *http.Requ
 		IsLoggedIn: true,
 		Username:   username,
 		UserRole:   userRole,
-		CSRFToken:  csrf.Token(r),
 		Error:      errorMsg,
 		Data: map[string]interface{}{
 			"Categories": categories,
@@ -233,4 +232,126 @@ func (h *PlaylistHandler) RemoveVideoFromPlaylist(w http.ResponseWriter, r *http
 
 	slog.Info("video removed from playlist", "playlist_id", playlistID, "resource_id", resourceID)
 	http.Redirect(w, r, "/admin/playlists", http.StatusSeeOther)
+}
+
+// CreatePlaylistAPI handles JSON playlist creation.
+// POST /api/playlists
+func (h *PlaylistHandler) CreatePlaylistAPI(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		CategoryID  string `json:"category_id"`
+		SortOrder   int    `json:"sort_order"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		respondJSONError(w, "Playlist name is required", http.StatusBadRequest)
+		return
+	}
+	if req.CategoryID == "" {
+		respondJSONError(w, "Category is required", http.StatusBadRequest)
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context(), h.sm)
+
+	pl := &model.Playlist{
+		ID:          uuid.New().String(),
+		CategoryID:  req.CategoryID,
+		Name:        req.Name,
+		Description: req.Description,
+		CreatedBy:   userID,
+		SortOrder:   req.SortOrder,
+	}
+
+	if err := h.playlistStore.Insert(pl); err != nil {
+		slog.Error("failed to create playlist", "error", err)
+		respondJSONError(w, "Failed to create playlist", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("playlist created via API", "id", pl.ID, "name", req.Name, "category_id", req.CategoryID)
+	respondJSONOK(w, map[string]interface{}{
+		"redirect": "/admin/playlists",
+	})
+}
+
+// DeletePlaylistAPI handles JSON playlist deletion.
+// DELETE /api/playlists/{id}
+func (h *PlaylistHandler) DeletePlaylistAPI(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondJSONError(w, "Missing playlist ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.playlistStore.Delete(id); err != nil {
+		slog.Error("failed to delete playlist", "id", id, "error", err)
+		respondJSONError(w, "Failed to delete playlist", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("playlist deleted via API", "id", id)
+	respondJSONOK(w, nil)
+}
+
+// AddVideoAPI handles JSON add-video-to-playlist.
+// POST /api/playlists/{id}/videos
+func (h *PlaylistHandler) AddVideoAPI(w http.ResponseWriter, r *http.Request) {
+	playlistID := chi.URLParam(r, "id")
+	if playlistID == "" {
+		respondJSONError(w, "Missing playlist ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		ResourceID string `json:"resource_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.ResourceID == "" {
+		respondJSONError(w, "Missing resource ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.playlistStore.AddVideo(playlistID, req.ResourceID, 0); err != nil {
+		slog.Error("failed to add video to playlist", "playlist_id", playlistID, "resource_id", req.ResourceID, "error", err)
+		respondJSONError(w, "Failed to add video", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("video added to playlist via API", "playlist_id", playlistID, "resource_id", req.ResourceID)
+	respondJSONOK(w, nil)
+}
+
+// RemoveVideoAPI handles JSON remove-video-from-playlist.
+// DELETE /api/playlists/{id}/videos/{resourceId}
+func (h *PlaylistHandler) RemoveVideoAPI(w http.ResponseWriter, r *http.Request) {
+	playlistID := chi.URLParam(r, "id")
+	if playlistID == "" {
+		respondJSONError(w, "Missing playlist ID", http.StatusBadRequest)
+		return
+	}
+
+	resourceID := chi.URLParam(r, "resourceId")
+	if resourceID == "" {
+		respondJSONError(w, "Missing resource ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.playlistStore.RemoveVideo(playlistID, resourceID); err != nil {
+		slog.Error("failed to remove video from playlist", "playlist_id", playlistID, "resource_id", resourceID, "error", err)
+		respondJSONError(w, "Failed to remove video", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("video removed from playlist via API", "playlist_id", playlistID, "resource_id", resourceID)
+	respondJSONOK(w, nil)
 }

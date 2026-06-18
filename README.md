@@ -8,8 +8,8 @@ categories, and playlists — written in Go.
 - **Single binary** — one file, zero runtime dependencies
 - **Multi-user system** — two roles: `admin` (full control) and `uploader` (upload
   and delete own videos only)
-- **Login / Logout** — session-based authentication (24 h expiry) with bcrypt
-  password hashing
+- **Login / Logout** — session-based authentication (24 h expiry) with TOTP
+  (Time-based One-Time Password) — no passwords needed
 - **Categories** — admin-created video categories, assignable to specific uploaders
 - **Playlists** — sub-groups within categories; videos can belong to zero or more
   playlists
@@ -17,7 +17,6 @@ categories, and playlists — written in Go.
   management page
 - **Password-protected sharing** — per-video passwords for share links
 - **MP4 streaming** — HTTP range requests for efficient video delivery
-- **CSRF protection** — per-request tokens on all state-changing forms
 - **Rate limiting** — global (60 req/min/IP) and strict for share pages
   (5 req/min/IP)
 - **SQLite storage** — no external database required; WAL mode for concurrency
@@ -37,23 +36,28 @@ CGO_ENABLED=0 go build -o videoserver ./cmd/server
 The first time you run it, the server:
 1. Creates a SQLite database in `./data/`
 2. Bootstraps an admin user with your configured credentials (or defaults)
-3. Generates random `SESSION_KEY` and `CSRF_KEY` if not set (logged at startup)
+3. Creates all necessary database tables
 
-### First-run admin credentials
+### First-run admin setup
 
-By default the admin username is `admin` and a random 16-character password is
-generated and printed to the logs. **Copy the admin password** from the startup
-log when running for the first time.
+On first boot, the server creates an admin account and displays a TOTP URI and
+QR code directly in the terminal:
 
 ```text
-{"level":"WARN","msg":"ADMIN_PASSWORD not set, generated random password","password":"aB3x...K9mQ"}
-{"level":"INFO","msg":"admin user bootstrapped","username":"admin"}
-{"level":"INFO","msg":"starting server","addr":":8080"}
+═══════════════════════════════════════════
+  Admin Account Created!
+  Username: admin
+  Scan the QR code below with your
+  authenticator app (Google Authenticator, Authy, etc.)
+  Or enter the URI manually in your browser
+  TOTP URI: otpauth://totp/VideoShare:admin?...
+═══════════════════════════════════════════
 ```
 
-Visit `http://localhost:8080/login`, sign in with `admin` / the generated
-password, and you'll land on the admin dashboard — ready to create categories,
-add uploaders, and start uploading videos.
+Scan the QR code with any authenticator app, then visit
+`http://localhost:8080/login`, enter `admin` as the username and the 6-digit
+code from your authenticator app. You'll land on the admin dashboard — ready to
+create categories, add uploaders, and start uploading videos.
 
 ## Configuration
 
@@ -64,14 +68,7 @@ All configuration is via environment variables:
 | `PORT` | `:8080` | Listen address (e.g., `:8080` or `127.0.0.1:8080`) |
 | `DATA_DIR` | `./data` | Data directory for SQLite DB and video storage |
 | `ADMIN_USERNAME` | `admin` | Admin login username |
-| `ADMIN_PASSWORD` | *(random 16 char)* | Admin login password (set explicitly, or auto-generated) |
-| `SESSION_KEY` | *(random 64 hex)* | Session encryption key (set for persistence across restarts) |
-| `CSRF_KEY` | *(random 64 hex)* | CSRF protection key (set for persistence across restarts) |
 | `COOKIE_SECURE` | `false` | Set to `true` when using HTTPS |
-
-> If `SESSION_KEY` or `CSRF_KEY` are not set, random 64-character hex values are
-> generated at startup and logged. Set them explicitly to maintain sessions
-> across restarts.
 
 ## Docker Deployment
 
@@ -84,9 +81,6 @@ docker run -d \
   --name videoserver \
   -p 8080:8080 \
   -e ADMIN_USERNAME=admin \
-  -e ADMIN_PASSWORD=mysecretpassword \
-  -e SESSION_KEY=$(openssl rand -hex 32) \
-  -e CSRF_KEY=$(openssl rand -hex 32) \
   -v ./data:/app/data \
   videoserver
 ```
@@ -101,9 +95,6 @@ services:
       - "8080:8080"
     environment:
       - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=mysecretpassword
-      - SESSION_KEY=change-me-64-char-hex-key
-      - CSRF_KEY=change-me-too-64-char-hex-key
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -117,7 +108,7 @@ services:
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/login` | Login page |
-| POST | `/login` | Login with username + password |
+| POST | `/login` | Login with username + TOTP code |
 | GET | `/s/{id}` | Video share page (password entry) |
 | POST | `/s/{id}/auth` | Verify share password |
 
@@ -151,17 +142,12 @@ services:
 |--------|------|------|-------------|
 | GET | `/api/video/{id}` | User or share-auth | Video stream with HTTP range request support |
 
-> **Note:** HTML forms use `_method=DELETE` via a hidden form field to work
-> around the lack of native DELETE support in HTML. The server's method-override
-> middleware converts these transparently.
-
 ## Security Notes
 
-1. **Set `ADMIN_PASSWORD`** to a strong password in production — if unset, a
-   random password is generated and printed to the logs (visible only on
-   first startup).
-2. **Set `SESSION_KEY` and `CSRF_KEY`** to persistent random values to maintain
-   sessions across restarts.
+1. **TOTP replaces passwords** — admin and uploader accounts use TOTP
+   (authenticator app). Scan the QR code shown on first boot or when creating
+   uploaders. The TOTP secret is stored in the database and never logged.
+2. **No external keys needed** — all configuration is via environment variables.
 3. **Use a reverse proxy** (nginx, Caddy) for HTTPS termination in production.
 4. **Set `COOKIE_SECURE=true`** when using HTTPS.
 5. **Roles are enforced server-side** — `admin` users have full access;
@@ -176,6 +162,6 @@ services:
 - **Backend:** Go 1.25+, Chi v5 router, Go html/template
 - **Database:** modernc.org/sqlite (pure Go, CGO-free), WAL journal mode
 - **Sessions:** SCS v2 session manager with SQLite store (24 h expiry)
-- **Auth:** bcrypt password hashing, gorilla/csrf tokens
+- **Auth:** TOTP (pquerna/otp)
 - **Frontend:** Pico CSS v2 (classless, semantic HTML framework)
 - **Build:** `CGO_ENABLED=0` static binary, multi-stage Docker build

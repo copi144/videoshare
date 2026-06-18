@@ -131,6 +131,19 @@ func (s *CategoryStore) GetUploaders(categoryID string) ([]string, error) {
 	return ids, rows.Err()
 }
 
+// IsUploaderAuthorized checks if a user is assigned to upload to a category.
+func (s *CategoryStore) IsUploaderAuthorized(userID, categoryID string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM category_uploaders WHERE category_id = ? AND user_id = ?",
+		categoryID, userID,
+	).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // GetVideoCount returns the number of resources in a given category.
 func (s *CategoryStore) GetVideoCount(categoryID string) (int, error) {
 	var count int

@@ -31,3 +31,21 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
 }
+
+// respondJSONError writes a JSON error response
+func respondJSONError(w http.ResponseWriter, msg string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// respondJSONOK writes a success JSON response
+func respondJSONOK(w http.ResponseWriter, data map[string]interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	if data == nil {
+		data = map[string]interface{}{"ok": true}
+	} else {
+		data["ok"] = true
+	}
+	json.NewEncoder(w).Encode(data)
+}

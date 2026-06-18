@@ -1,13 +1,14 @@
 package main
 
 import (
-	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/mdp/qrterminal/v3"
 
 	"videoshare/internal/config"
 	"videoshare/internal/handler"
@@ -30,10 +31,35 @@ func main() {
 	}
 	defer db.Close()
 
-	// Bootstrap admin user on first run.
-	if err := model.BootstrapAdmin(db, cfg.AdminUsername, cfg.AdminPassword); err != nil {
+	// Bootstrap admin user on first run — generates TOTP key.
+	totpURI, err := model.BootstrapAdmin(db, cfg.AdminUsername)
+	if err != nil {
 		slog.Error("failed to bootstrap admin", "error", err)
 		os.Exit(1)
+	}
+	if totpURI != "" {
+		// First boot — display TOTP setup credentials in terminal.
+		fmt.Println("\n═══════════════════════════════════════════")
+		fmt.Println("  Admin Account Created!")
+		fmt.Printf("  Username: %s\n", cfg.AdminUsername)
+		fmt.Println("  Scan the QR code below with your")
+		fmt.Println("  authenticator app (Google Authenticator, Authy, etc.)")
+		fmt.Println("  Or enter the URI manually in your browser")
+		fmt.Printf("  TOTP URI: %s\n", totpURI)
+		fmt.Println("═══════════════════════════════════════════")
+		qrterminal.Generate(totpURI, qrterminal.L, os.Stdout)
+		fmt.Println("")
+	}
+
+	// Bootstrap the global category (public/no-password videos).
+	var globalAdminID string
+	err = db.QueryRow("SELECT id FROM users WHERE role = 'admin' LIMIT 1").Scan(&globalAdminID)
+	if err != nil {
+		slog.Error("failed to lookup admin user ID for global category bootstrap", "error", err)
+	} else {
+		if err := model.BootstrapGlobalCategory(db, globalAdminID); err != nil {
+			slog.Error("failed to bootstrap global category", "error", err)
+		}
 	}
 
 	sessStore := model.NewSessionStore(db)
@@ -46,19 +72,12 @@ func main() {
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.SameSite = http.SameSiteLaxMode
 
-	// Decode hex-encoded CSRF key from config.
-	csrfKey, err := hex.DecodeString(cfg.CsrfKey)
-	if err != nil {
-		slog.Error("invalid CSRF_KEY (must be hex-encoded)", "error", err)
-		os.Exit(1)
-	}
-
 	resourceStore := model.NewResourceStore(db)
 	userStore := model.NewUserStore(db)
 	categoryStore := model.NewCategoryStore(db)
 	playlistStore := model.NewPlaylistStore(db)
 
-	router := handler.NewRouter(sm, web.Templates(), csrfKey, cfg.CookieSecure, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore)
+	router := handler.NewRouter(sm, web.Templates(), resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore)
 
 	addr := cfg.Addr
 	slog.Info("starting server", "addr", addr)

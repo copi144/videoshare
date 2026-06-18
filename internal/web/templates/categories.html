@@ -7,12 +7,12 @@
 {{end}}
 
 {{$data := .Data}}
-{{$csrf := .CSRFToken}}
+
+<div id="error-message" class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
 
 <article>
     <header><h2>Create Category</h2></header>
-    <form action="/admin/categories" method="POST">
-        <input type="hidden" name="_csrf" value="{{$csrf}}">
+    <form action="/admin/categories" method="POST" id="create-category-form">
         <div class="grid">
             <label for="name">Name
                 <input type="text" id="name" name="name" placeholder="Category name" required>
@@ -21,20 +21,22 @@
                 <input type="text" id="description" name="description" placeholder="Optional description">
             </label>
         </div>
+        <div class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
         <button type="submit">Create Category</button>
     </form>
 </article>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    VS.hijackForm('create-category-form', '/api/categories', 'POST');
+});
+</script>
 
 {{range $cat := $data.Categories}}
 <article>
     <header>
         <strong>{{$cat.Category.Name}}</strong>
         <small>({{$cat.VideoCount}} videos)</small>
-        <form action="/admin/categories/{{$cat.Category.ID}}/delete" method="POST" class="inline-form" style="float:right">
-            <input type="hidden" name="_csrf" value="{{$csrf}}">
-            <input type="hidden" name="_method" value="DELETE">
-            <button type="submit" class="secondary outline small">Delete</button>
-        </form>
+        <button id="del-cat-{{$cat.Category.ID}}" class="secondary outline small" style="float:right">Delete</button>
     </header>
     <p>{{$cat.Category.Description}}</p>
     <p><small>Created by: {{$cat.Category.CreatedBy}}</small></p>
@@ -52,8 +54,7 @@
 
     <details>
         <summary>Manage Uploaders</summary>
-        <form action="/admin/categories/{{$cat.Category.ID}}/uploaders" method="POST">
-            <input type="hidden" name="_csrf" value="{{$csrf}}">
+        <form action="/admin/categories/{{$cat.Category.ID}}/uploaders" method="POST" id="uploader-form-{{$cat.Category.ID}}">
             <fieldset>
                 {{range $user := $data.Users}}
                 <label>
@@ -62,10 +63,17 @@
                 </label>
                 {{end}}
             </fieldset>
+            <div class="error-message" style="display:none;color:#d32f2f;margin-bottom:0.5rem;"></div>
             <button type="submit" class="outline">Update Uploaders</button>
         </form>
     </details>
 </article>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    VS.setupDeleteButton('del-cat-{{$cat.Category.ID}}', '/api/categories/{{$cat.Category.ID}}', 'Delete this category?');
+    VS.setupCheckboxForm('uploader-form-{{$cat.Category.ID}}', '/api/categories/{{$cat.Category.ID}}/uploaders', 'POST');
+});
+</script>
 {{else}}
 <article><p>No categories yet. Create your first category above.</p></article>
 {{end}}
