@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isAuthenticated, navigate } from '../stores/auth';
   import { createPlaylist, listCategories, listPlaylists } from '../lib/api';
+
+  export let onError: ((msg: string) => void) | undefined = undefined;
 
   interface Category {
     id: string;
@@ -23,20 +24,14 @@
   let formName = '';
   let formDescription = '';
   let formCategoryId = '';
-  let error: string | null = null;
   let success: string | null = null;
   let loading = true;
 
   onMount(async () => {
-    if (!$isAuthenticated) {
-      navigate('/login');
-      return;
-    }
     await loadData();
   });
 
   async function loadData() {
-    error = null;
     loading = true;
     try {
       const [catData, plData] = await Promise.all([
@@ -50,22 +45,22 @@
       }
       playlists = plData.playlists;
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to load data.';
+      const msg = e instanceof Error ? e.message : 'Failed to load data.';
+      onError?.(msg);
     } finally {
       loading = false;
     }
   }
 
   async function handleCreate() {
-    error = null;
     success = null;
 
     if (!formName.trim()) {
-      error = 'Playlist name is required.';
+      onError?.('Playlist name is required.');
       return;
     }
     if (!formCategoryId) {
-      error = 'Please select a category.';
+      onError?.('Please select a category.');
       return;
     }
 
@@ -78,16 +73,14 @@
         formCategoryId = '';
       }
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to create playlist.';
+      const msg = e instanceof Error ? e.message : 'Failed to create playlist.';
+      onError?.(msg);
     }
   }
 </script>
 
 <h1>Playlist Management</h1>
 
-{#if error}
-  <article class="error-box">{error}</article>
-{/if}
 {#if success}
   <article>{success}</article>
 {/if}

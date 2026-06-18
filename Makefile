@@ -1,6 +1,9 @@
-.PHONY: build run clean dev
+.PHONY: build build-frontend run clean dev
 
-build:
+build-frontend:
+	cd frontend && npm run build && cp dist/index.html ../internal/web/spa/index.html
+
+build: build-frontend
 	CGO_ENABLED=0 go build -o videoserver ./cmd/server
 
 run:
@@ -10,5 +13,5 @@ clean:
 	rm -f videoserver
 	rm -rf data/
 
-dev:
+dev: build-frontend
 	go run ./cmd/server

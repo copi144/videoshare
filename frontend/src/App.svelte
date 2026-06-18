@@ -1,57 +1,52 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page, navigate, checkAuth } from './stores/auth';
-  
-  // Lazy page imports
-  let PageComponent: any = null;
-  
-  $: {
-    // Resolve page based on current route
-    const p = $page;
-    if (!p) {
-      PageComponent = null;
-    } else if (p.name === 'loading') {
-      import('./pages/Loading.svelte').then(m => PageComponent = m.default);
-    } else if (p.name === 'login') {
-      import('./pages/Login.svelte').then(m => PageComponent = m.default);
-    } else if (p.name === 'admin') {
-      import('./pages/Admin.svelte').then(m => PageComponent = m.default);
-    } else if (p.name === 'share') {
-      import('./pages/Share.svelte').then(m => PageComponent = m.default);
-    } else if (p.name === 'watch') {
-      import('./pages/Watch.svelte').then(m => PageComponent = m.default);
-    } else if (p.name === 'categories') {
-      import('./pages/Categories.svelte').then(m => PageComponent = m.default);
-    } else if (p.name === 'playlists') {
-      import('./pages/Playlists.svelte').then(m => PageComponent = m.default);
-    } else if (p.name === 'users') {
-      import('./pages/Users.svelte').then(m => PageComponent = m.default);
-    } else {
-      import('./pages/NotFound.svelte').then(m => PageComponent = m.default);
-    }
+  import { checkAuth, isAuthenticated } from './stores/auth';
+  import Login from './pages/Login.svelte';
+  import Admin from './pages/Admin.svelte';
+  import Share from './pages/Share.svelte';
+  import Watch from './pages/Watch.svelte';
+
+  type View = 'login' | 'admin' | 'share' | 'watch';
+
+  let view: View = 'login';
+  let shareId: string | null = null;
+
+  function handleLoginSuccess() {
+    view = 'admin';
   }
-  
+
+  function handleShareSuccess(id: string) {
+    shareId = id;
+    view = 'watch';
+  }
+
   onMount(async () => {
-    // Listen for hash changes
-    function handleHash() {
-      const hash = window.location.hash.slice(1) || '/';
-      navigate(hash);
+    // Check if this is a share URL
+    const match = window.location.pathname.match(/^\/s\/([^/]+)(?:\/watch)?\/?$/);
+    if (match) {
+      shareId = match[1];
+      view = 'share';
     }
-    window.addEventListener('hashchange', handleHash);
-    
-    // Check auth state on load
+
+    // Check auth state
     await checkAuth();
-    
-    // Parse initial route
-    handleHash();
-    
-    return () => window.removeEventListener('hashchange', handleHash);
+
+    // If not on a share page, decide based on auth
+    if (!match) {
+      view = $isAuthenticated ? 'admin' : 'login';
+    }
   });
 </script>
 
 <main class="container">
-  {#if PageComponent}
-    <svelte:component this={PageComponent} params={$page.params} />
+  {#if view === 'login'}
+    <Login onSuccess={handleLoginSuccess} />
+  {:else if view === 'admin'}
+    <Admin />
+  {:else if view === 'share' && shareId}
+    <Share id={shareId} onSuccess={handleShareSuccess} />
+  {:else if view === 'watch' && shareId}
+    <Watch id={shareId} />
   {/if}
 </main>
 

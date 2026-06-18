@@ -4,7 +4,7 @@
   import { addWatchHistory } from '../stores/history';
   import Hls from 'hls.js';
 
-  export let params: Record<string, string> = {};
+  export let id: string;
 
   interface ResourceInfo {
     id: string;
@@ -37,7 +37,7 @@
 
   // Initialize HLS or native playback when resource and video element are ready
   $: if (resource && videoRef) {
-    const videoId = params.id;
+    const videoId = id;
     // Clean up previous HLS instance if any
     if (hlsInstance) {
       hlsInstance.destroy();
@@ -59,13 +59,13 @@
   }
 
   onMount(async () => {
-    if (!params.id) {
+    if (!id) {
       error = 'No video ID specified.';
       loading = false;
       return;
     }
     try {
-      resource = await getResource(params.id);
+      resource = await getResource(id);
       addWatchHistory({ id: resource.id, title: resource.title, watchedAt: new Date().toISOString() });
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to load video info.';
@@ -102,5 +102,4 @@
     <p style="color: var(--muted-color, #888); font-style: italic;">No description</p>
   {/if}
   <p>Views: {resource.views} | Size: {formatSize(resource.file_size)} | Uploaded by: {resource.uploaded_username}</p>
-  <a href="#/admin">← Back to Videos</a>
 {/if}

@@ -1,15 +1,9 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { isAuthenticated, navigate } from '../stores/auth';
-  import { listResources, uploadVideo, deleteResource, listCategories, updateReadme } from '../lib/api';
-  import {
-    getWatchHistory,
-    clearWatchHistory,
-    removeWatchEntry,
-    addSearchHistory,
-    getSearchHistory,
-    clearSearchHistory,
-  } from '../stores/history';
+  import { onMount } from 'svelte';
+  import { listResources, uploadVideo, deleteResource, listCategories } from '../lib/api';
+  import Categories from './Categories.svelte';
+  import Playlists from './Playlists.svelte';
+  import Users from './Users.svelte';
 
   interface Resource {
     id: string;
@@ -43,16 +37,6 @@
   let uploading = false;
   let copySuccess: string | null = null;
 
-  // Search state
-  let searchQuery = '';
-  let searchInput = '';
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let showRecentSearches = false;
-  let searchFocused = false;
-
-  // Watch history
-  let watchHistory = getWatchHistory();
-
   function onFileChange(e: Event) {
     selectedFile = (e.target as HTMLInputElement).files?.[0] ?? null;
   }
@@ -64,84 +48,6 @@
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
-
-  function formatRelativeTime(isoString: string): string {
-    const now = Date.now();
-    const then = new Date(isoString).getTime();
-    const diffMs = now - then;
-    if (diffMs < 0) return 'just now';
-
-    const seconds = Math.floor(diffMs / 1000);
-    if (seconds < 60) return 'just now';
-
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days}d ago`;
-
-    const months = Math.floor(days / 30);
-    if (months < 12) return `${months}mo ago`;
-
-    const years = Math.floor(months / 12);
-    return `${years}y ago`;
-  }
-
-  $: watchHistory = getWatchHistory();
-
-  // Search filtering with debounce
-  $: filteredResources = resources.filter((res) => {
-    if (!searchQuery.trim()) return true;
-    return res.title.toLowerCase().includes(searchQuery.trim().toLowerCase());
-  });
-
-  $: recentSearches = getSearchHistory();
-
-  function onSearchInput() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      searchQuery = searchInput;
-      if (searchInput.trim()) {
-        addSearchHistory(searchInput.trim());
-        recentSearches = getSearchHistory();
-      }
-    }, 300);
-  }
-
-  function onSearchFocus() {
-    searchFocused = true;
-    recentSearches = getSearchHistory();
-    if (recentSearches.length > 0) {
-      showRecentSearches = true;
-    }
-  }
-
-  function onSearchBlur() {
-    // Delay so click on suggestion registers
-    setTimeout(() => {
-      searchFocused = false;
-      showRecentSearches = false;
-    }, 200);
-  }
-
-  function selectRecentSearch(query: string) {
-    searchInput = query;
-    searchQuery = query;
-    showRecentSearches = false;
-  }
-
-  function clearWatchEntry(id: string) {
-    removeWatchEntry(id);
-    watchHistory = getWatchHistory();
-  }
-
-  function handleClearHistory() {
-    clearWatchHistory();
-    watchHistory = getWatchHistory();
   }
 
   async function loadData() {
@@ -160,16 +66,12 @@
     }
   }
 
-  onMount(async () => {
-    if (!$isAuthenticated) {
-      navigate('/login');
-      return;
-    }
-    await loadData();
-  });
+  function setError(msg: string) {
+    error = msg;
+  }
 
-  onDestroy(() => {
-    if (debounceTimer) clearTimeout(debounceTimer);
+  onMount(async () => {
+    await loadData();
   });
 
   async function handleUpload() {
@@ -227,7 +129,7 @@
   }
 
   function copyShareLink(id: string) {
-    const url = `${window.location.origin}/#/s/${id}`;
+    const url = `${window.location.origin}/s/${id}`;
     navigator.clipboard.writeText(url).then(() => {
       copySuccess = id;
       setTimeout(() => { copySuccess = null; }, 2000);
@@ -250,37 +152,6 @@
 {#if error}
   <article class="error-box">{error}</article>
 {/if}
-
-<!-- Search Bar -->
-<div class="search-container" style="position: relative; margin-bottom: 1rem;">
-  <input
-    type="search"
-    placeholder="Search videos by title…"
-    bind:value={searchInput}
-    on:input={onSearchInput}
-    on:focus={onSearchFocus}
-    on:blur={onSearchBlur}
-    style="width: 100%;"
-  />
-  {#if showRecentSearches && recentSearches.length > 0}
-    <div class="recent-searches" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: var(--card-background-color, #fff); border: 1px solid var(--card-border-color, #ccc); border-radius: 0 0 var(--border-radius, 4px) var(--border-radius, 4px); box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--card-border-color, #eee);">
-        <small style="font-weight: 600;">Recent searches</small>
-        <button class="outline secondary" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" on:click|stopPropagation={clearSearchHistory}>Clear</button>
-      </div>
-      {#each recentSearches as sr}
-        <button
-          class="outline secondary"
-          style="display: block; width: 100%; text-align: left; border: none; border-radius: 0; padding: 0.5rem 0.75rem; font-size: 0.875rem; cursor: pointer;"
-          on:click|stopPropagation={() => selectRecentSearch(sr.query)}
-          on:mousedown|preventDefault
-        >
-          {sr.query}
-        </button>
-      {/each}
-    </div>
-  {/if}
-</div>
 
 <!-- Upload Form -->
 <article>
@@ -350,7 +221,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each filteredResources as res}
+        {#each resources as res}
           <tr>
             <td>{res.title}</td>
             <td>{res.category_name}</td>
@@ -384,38 +255,20 @@
       </tbody>
     </table>
   </figure>
-
-  <!-- Recently Watched -->
-  <details style="margin-top: 1.5rem;">
-    <summary role="button" class="outline">Recently Watched ({watchHistory.length})</summary>
-    {#if watchHistory.length > 0}
-      <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem;">
-        <button class="outline secondary" style="font-size: 0.875rem;" on:click={handleClearHistory}>Clear All History</button>
-      </div>
-      <table role="grid">
-        <thead>
-          <tr>
-            <th>Video</th>
-            <th>Watched</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each watchHistory as record}
-            <tr>
-              <td>
-                <a href="#/s/{record.id}/watch">{record.title || 'Untitled'}</a>
-              </td>
-              <td>{formatRelativeTime(record.watchedAt)}</td>
-              <td>
-                <button class="outline" on:click={() => clearWatchEntry(record.id)}>Clear</button>
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {:else}
-      <p style="padding: 0.75rem 0;">No videos watched yet.</p>
-    {/if}
-  </details>
 {/if}
+
+<!-- Management Sections -->
+<details style="margin-top: 1.5rem;">
+  <summary role="button" class="outline secondary">Category Management</summary>
+  <Categories onError={setError} />
+</details>
+
+<details style="margin-top: 1rem;">
+  <summary role="button" class="outline secondary">Playlist Management</summary>
+  <Playlists onError={setError} />
+</details>
+
+<details style="margin-top: 1rem;">
+  <summary role="button" class="outline secondary">User Management</summary>
+  <Users onError={setError} />
+</details>

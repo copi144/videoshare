@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isAuthenticated, navigate } from '../stores/auth';
   import { listCategories, createCategory, deleteCategory } from '../lib/api';
+
+  export let onError: ((msg: string) => void) | undefined = undefined;
 
   interface Category {
     id: string;
@@ -14,34 +15,28 @@
   let categories: Category[] = [];
   let formName = '';
   let formDescription = '';
-  let error: string | null = null;
   let loading = true;
 
   onMount(async () => {
-    if (!$isAuthenticated) {
-      navigate('/login');
-      return;
-    }
     await loadCategories();
   });
 
   async function loadCategories() {
-    error = null;
     loading = true;
     try {
       const data = await listCategories();
       categories = data.categories;
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to load categories.';
+      const msg = e instanceof Error ? e.message : 'Failed to load categories.';
+      onError?.(msg);
     } finally {
       loading = false;
     }
   }
 
   async function handleCreate() {
-    error = null;
     if (!formName.trim()) {
-      error = 'Category name is required.';
+      onError?.('Category name is required.');
       return;
     }
     try {
@@ -50,12 +45,12 @@
       formDescription = '';
       await loadCategories();
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to create category.';
+      const msg = e instanceof Error ? e.message : 'Failed to create category.';
+      onError?.(msg);
     }
   }
 
   async function handleDelete(id: string) {
-    error = null;
     if (!confirm('Are you sure you want to delete this category? Videos in this category will remain.')) {
       return;
     }
@@ -63,16 +58,13 @@
       await deleteCategory(id);
       categories = categories.filter(c => c.id !== id);
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to delete category.';
+      const msg = e instanceof Error ? e.message : 'Failed to delete category.';
+      onError?.(msg);
     }
   }
 </script>
 
 <h1>Category Management</h1>
-
-{#if error}
-  <article class="error-box">{error}</article>
-{/if}
 
 <article>
   <h2>Create Category</h2>

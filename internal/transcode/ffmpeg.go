@@ -1,10 +1,12 @@
 package transcode
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +17,13 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 	// Ensure output directory exists.
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		// exec.Cmd.Run will fail later anyway; we let FFmpeg surface the error.
+	}
+
+	// Create numbered subdirectories for each quality rendition.
+	for i := range qualities {
+		if err := os.MkdirAll(filepath.Join(outputDir, fmt.Sprintf("%d", i)), 0o755); err != nil {
+			// Let FFmpeg surface the error.
+		}
 	}
 
 	// Build the filter_complex string:
@@ -49,10 +58,18 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 		args = append(args,
 			"-map", fmt.Sprintf("[v%dout]", i),
 			fmt.Sprintf("-c:v:%d", i), "libx264",
-			fmt.Sprintf("-b:v:%d", i), q.VideoBitrate,
+			fmt.Sprintf("-preset:v:%d", i), "medium",
 			fmt.Sprintf("-maxrate:%d", i), q.MaxRate,
 			fmt.Sprintf("-bufsize:%d", i), q.BufSize,
 		)
+
+		if q.CRF > 0 {
+			// CRF mode: constant visual quality, variable bitrate
+			args = append(args, fmt.Sprintf("-crf:%d", i), strconv.Itoa(q.CRF))
+		} else if q.VideoBitrate != "" {
+			// Legacy bitrate mode
+			args = append(args, fmt.Sprintf("-b:v:%d", i), q.VideoBitrate)
+		}
 	}
 
 	// Audio encoding (single shared audio stream for all renditions).
@@ -77,10 +94,49 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 		"-hls_time", "4",
 		"-hls_playlist_type", "vod",
 		"-hls_flags", "independent_segments",
-		"-hls_segment_filename", filepath.Join(outputDir, "%v", "seg_%03d.ts"),
-		"-master_pl_name", filepath.Join(outputDir, "master.m3u8"),
-		filepath.Join(outputDir, "%v", "playlist.m3u8"),
+		"-hls_segment_filename", filepath.Join(outputDir, "%v", "%04d.ts"),
+		"-master_pl_name", "master.m3u8",
+		filepath.Join(outputDir, "%v.m3u8"),
 	)
 
 	return exec.Command(cfg.FFmpegPath, args...)
+}
+
+// RenameHLSOutputs renames FFmpeg's numbered HLS outputs (0, 1, 2) to resolution names (360p, 720p, 1080p)
+// and updates the master playlist references accordingly.
+func RenameHLSOutputs(outputDir string, qualities []Quality) error {
+	for i, q := range qualities {
+		// Rename playlist: 0.m3u8 → 360p.m3u8
+		oldPlaylist := filepath.Join(outputDir, fmt.Sprintf("%d.m3u8", i))
+		newPlaylist := filepath.Join(outputDir, fmt.Sprintf("%s.m3u8", q.Name))
+		if err := os.Rename(oldPlaylist, newPlaylist); err != nil {
+			return fmt.Errorf("rename playlist %s -> %s: %w", oldPlaylist, newPlaylist, err)
+		}
+
+		// Rename segment dir: 0/ -> 360p/
+		oldDir := filepath.Join(outputDir, fmt.Sprintf("%d", i))
+		newDir := filepath.Join(outputDir, q.Name)
+		if err := os.Rename(oldDir, newDir); err != nil {
+			return fmt.Errorf("rename segment dir %s -> %s: %w", oldDir, newDir, err)
+		}
+	}
+
+	// Update master playlist stream references
+	masterPath := filepath.Join(outputDir, "master.m3u8")
+	data, err := os.ReadFile(masterPath)
+	if err != nil {
+		return fmt.Errorf("read master playlist: %w", err)
+	}
+
+	for i, q := range qualities {
+		oldRef := fmt.Sprintf("%d.m3u8", i)
+		newRef := fmt.Sprintf("%s.m3u8", q.Name)
+		data = bytes.ReplaceAll(data, []byte(oldRef), []byte(newRef))
+	}
+
+	if err := os.WriteFile(masterPath, data, 0644); err != nil {
+		return fmt.Errorf("write master playlist: %w", err)
+	}
+
+	return nil
 }

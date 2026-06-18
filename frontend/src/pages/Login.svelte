@@ -1,15 +1,12 @@
 <script lang="ts">
-  import { isAuthenticated, navigate } from '../stores/auth';
   import { login } from '../lib/api';
+
+  export let onSuccess: () => void;
 
   let username = '';
   let totpCode = '';
   let error: string | null = null;
   let loading = false;
-
-  $: if ($isAuthenticated) {
-    navigate('/admin');
-  }
 
   async function handleSubmit() {
     error = null;
@@ -17,8 +14,7 @@
     try {
       const result = await login(username, totpCode);
       if (result.ok) {
-        const target = result.redirect || '/admin';
-        navigate(target);
+        onSuccess();
       } else {
         error = 'Login failed. Please check your credentials.';
       }
@@ -43,7 +39,7 @@
         type="text"
         id="totp_code"
         name="totp_code"
-        pattern="[0-9]{6}"
+        pattern={"[0-9]{6}"}
         inputmode="numeric"
         maxlength={6}
         bind:value={totpCode}

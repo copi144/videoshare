@@ -1,25 +1,20 @@
 <script lang="ts">
-  import { navigate } from '../stores/auth';
   import { shareAuth } from '../lib/api';
 
-  export let params: Record<string, string> = {};
+  export let id: string;
+  export let onSuccess: (id: string) => void;
 
   let password = '';
   let error: string | null = null;
   let loading = false;
 
   async function handleSubmit() {
-    if (!params.id) {
-      error = 'Invalid share link.';
-      return;
-    }
     error = null;
     loading = true;
     try {
-      const result = await shareAuth(params.id, password);
+      const result = await shareAuth(id, password);
       if (result.ok) {
-        const target = result.redirect || `/s/${params.id}/watch`;
-        navigate(target);
+        onSuccess(id);
       } else {
         error = 'Incorrect password.';
       }

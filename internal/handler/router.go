@@ -33,9 +33,16 @@ func NewRouter(sm *scs.SessionManager,
 	// Health check
 	r.Get("/health", NewHealthHandler(db).ServeHealth)
 
-	// Homepage — simple redirect
+	// Homepage — serve the SPA
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/admin", http.StatusFound)
+		spa, err := web.SPA()
+		if err != nil {
+			slog.Error("failed to read SPA", "error", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(spa)
 	})
 
 	// Create handlers with dependency injection.

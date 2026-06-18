@@ -93,9 +93,20 @@ func (q *Queue) processJob(job Job) {
 	if err != nil {
 		slog.Error("transcode failed", "resource_id", job.ResourceID, "error", err, "output", string(output))
 		// Clean up partial HLS output.
-		os.RemoveAll(job.OutputDir)
+		if rmErr := os.RemoveAll(job.OutputDir); rmErr != nil {
+			slog.Error("failed to clean up HLS output after failed transcode", "resource_id", job.ResourceID, "error", rmErr)
+		}
 		if statusErr := q.store.UpdateTranscodeStatus(job.ResourceID, "failed"); statusErr != nil {
 			slog.Error("failed to update transcode status to failed", "resource_id", job.ResourceID, "error", statusErr)
+		}
+		return
+	}
+
+	// Rename numbered outputs (0, 1, 2) to resolution names (360p, 720p, 1080p)
+	if err := RenameHLSOutputs(job.OutputDir, DefaultQualities); err != nil {
+		slog.Error("failed to rename HLS outputs", "resource_id", job.ResourceID, "error", err)
+		if updateErr := q.store.UpdateTranscodeStatus(job.ResourceID, "failed"); updateErr != nil {
+			slog.Error("failed to update transcode status", "resource_id", job.ResourceID, "error", updateErr)
 		}
 		return
 	}

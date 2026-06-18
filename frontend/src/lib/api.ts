@@ -117,5 +117,3 @@ export const createUser = (username: string) =>
   request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { username });
 
 // Me
-export const checkMe = () =>
-  request<{authenticated: boolean; user?: {id: string; username: string; role: string}}>('GET', '/api/me');

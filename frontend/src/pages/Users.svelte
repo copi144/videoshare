@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { isAuthenticated, navigate } from '../stores/auth';
   import { createUser } from '../lib/api';
 
+  export let onError: ((msg: string) => void) | undefined = undefined;
+
   let username = '';
-  let error: string | null = null;
   let loading = false;
 
   interface CreatedUser {
@@ -16,18 +15,11 @@
 
   let createdUser: CreatedUser | null = null;
 
-  onMount(() => {
-    if (!$isAuthenticated) {
-      navigate('/login');
-    }
-  });
-
   async function handleCreate() {
-    error = null;
     createdUser = null;
 
     if (!username.trim()) {
-      error = 'Username is required.';
+      onError?.('Username is required.');
       return;
     }
 
@@ -44,7 +36,8 @@
         username = '';
       }
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to create user.';
+      const msg = e instanceof Error ? e.message : 'Failed to create user.';
+      onError?.(msg);
     } finally {
       loading = false;
     }
@@ -52,10 +45,6 @@
 </script>
 
 <h1>User Management</h1>
-
-{#if error}
-  <article class="error-box">{error}</article>
-{/if}
 
 <article>
   <h2>Create User</h2>
