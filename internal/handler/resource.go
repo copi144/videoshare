@@ -2,7 +2,6 @@ package handler
 
 import (
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,7 +23,6 @@ type ResourceHandler struct {
 	store         *model.ResourceStore
 	categoryStore *model.CategoryStore
 	playlistStore *model.PlaylistStore
-	templates     fs.FS
 	dataDir       string
 	sm            *scs.SessionManager
 	userStore     *model.UserStore
@@ -32,125 +30,15 @@ type ResourceHandler struct {
 
 // NewResourceHandler creates a new ResourceHandler with injected dependencies.
 func NewResourceHandler(store *model.ResourceStore, categoryStore *model.CategoryStore,
-	templates fs.FS, dataDir string,
+	dataDir string,
 	sm *scs.SessionManager, userStore *model.UserStore, playlistStore *model.PlaylistStore) *ResourceHandler {
 	return &ResourceHandler{
 		store:         store,
 		categoryStore: categoryStore,
 		playlistStore: playlistStore,
-		templates:     templates,
 		dataDir:       dataDir,
 		sm:            sm,
 		userStore:     userStore,
-	}
-}
-
-// List serves the admin page listing uploaded videos.
-// GET /admin
-func (h *ResourceHandler) List(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r.Context(), h.sm)
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
-
-	var resources []*model.Resource
-	var err error
-	if userRole == "admin" {
-		resources, err = h.store.List()
-	} else {
-		resources, err = h.store.ListByUploader(userID)
-	}
-	if err != nil {
-		slog.Error("failed to list resources", "error", err)
-		respondError(w, r, http.StatusInternalServerError, "Failed to list resources")
-		return
-	}
-
-	// Sanitize for display — clear sensitive data.
-	for _, res := range resources {
-		res.PasswordHash = ""
-	}
-
-	// Load categories for the upload-form dropdown.
-	var categories []*model.Category
-	if userRole == "admin" {
-		categories, err = h.categoryStore.List()
-		if err != nil {
-			slog.Error("failed to list categories", "error", err)
-			categories = nil
-		}
-	} else {
-		categories, err = h.categoryStore.ListByUploader(userID)
-		if err != nil {
-			slog.Error("failed to list categories by uploader", "error", err)
-			categories = nil
-		}
-	}
-
-	// Always include the Global (public) category as the first option.
-	globalCat, gErr := h.categoryStore.GetByID(model.GlobalCategoryID)
-	if gErr != nil {
-		slog.Error("failed to load global category", "error", gErr)
-	} else {
-		hasGlobal := false
-		for _, c := range categories {
-			if c.ID == model.GlobalCategoryID {
-				hasGlobal = true
-				break
-			}
-		}
-		if !hasGlobal {
-			categories = append([]*model.Category{globalCat}, categories...)
-		}
-	}
-
-	// Load all playlists for the add-to-playlist dropdown.
-	var allPlaylists []*model.Playlist
-	allPlaylists, err = h.playlistStore.ListAll()
-	if err != nil {
-		slog.Error("failed to list playlists", "error", err)
-		allPlaylists = nil
-	}
-
-	// For each resource, load which playlists it belongs to.
-	resourcePlaylists := make(map[string][]string)
-	for _, res := range resources {
-		playlistIDs, err := h.playlistStore.GetPlaylistsForResource(res.ID)
-		if err != nil {
-			slog.Error("failed to get playlists for resource", "resource_id", res.ID, "error", err)
-			continue
-		}
-		resourcePlaylists[res.ID] = playlistIDs
-	}
-
-	// Build a lookup for playlist names.
-	playlistNames := make(map[string]string)
-	for _, pl := range allPlaylists {
-		playlistNames[pl.ID] = pl.Name
-	}
-
-	// Determine which resources have no playlist membership.
-	var unassigned []*model.Resource
-	for _, res := range resources {
-		if playlistIDs, ok := resourcePlaylists[res.ID]; !ok || len(playlistIDs) == 0 {
-			unassigned = append(unassigned, res)
-		}
-	}
-
-	username := middleware.GetUsername(r.Context(), h.sm)
-	if err := parseAndRender(w, h.templates, "upload.html", &TemplateData{
-		Title:      "Upload — VideoShare",
-		Resources:  resources,
-		IsLoggedIn: true,
-		Username:   username,
-		UserRole:   userRole,
-		Data: map[string]interface{}{
-			"Categories":        categories,
-			"Playlists":         allPlaylists,
-			"ResourcePlaylists": resourcePlaylists,
-			"PlaylistNames":     playlistNames,
-			"UnassignedVideos":  unassigned,
-		},
-	}); err != nil {
-		slog.Error("failed to render upload template", "error", err)
 	}
 }
 

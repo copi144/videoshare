@@ -13,7 +13,6 @@ import (
 	"videoshare/internal/config"
 	"videoshare/internal/handler"
 	"videoshare/internal/model"
-	"videoshare/internal/web"
 )
 
 func main() {
@@ -77,7 +76,7 @@ func main() {
 	categoryStore := model.NewCategoryStore(db)
 	playlistStore := model.NewPlaylistStore(db)
 
-	router := handler.NewRouter(sm, web.Templates(), resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore)
+	router := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore)
 
 	addr := cfg.Addr
 	slog.Info("starting server", "addr", addr)
