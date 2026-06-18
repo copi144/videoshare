@@ -269,3 +269,27 @@ func (h *CategoryHandler) AssignUploadersAPI(w http.ResponseWriter, r *http.Requ
 	slog.Info("uploaders assigned via API", "category_id", id, "count", len(req.UserIDs))
 	respondJSONOK(w, nil)
 }
+
+// ListCategoriesAPI returns all categories as JSON (for dropdowns).
+// GET /api/categories
+func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context(), h.sm)
+	userRole := middleware.GetUserRole(r.Context(), h.sm)
+
+	var categories []*model.Category
+	var err error
+	if userRole == "admin" {
+		categories, err = h.categoryStore.List()
+	} else {
+		categories, err = h.categoryStore.ListByUploader(userID)
+	}
+	if err != nil {
+		slog.Error("failed to list categories", "error", err)
+		respondJSONError(w, "Failed to list categories", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSONOK(w, map[string]interface{}{
+		"categories": categories,
+	})
+}

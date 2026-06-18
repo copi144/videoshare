@@ -355,3 +355,18 @@ func (h *PlaylistHandler) RemoveVideoAPI(w http.ResponseWriter, r *http.Request)
 	slog.Info("video removed from playlist via API", "playlist_id", playlistID, "resource_id", resourceID)
 	respondJSONOK(w, nil)
 }
+
+// ListPlaylistsAPI returns all playlists as JSON.
+// GET /api/playlists
+func (h *PlaylistHandler) ListPlaylistsAPI(w http.ResponseWriter, r *http.Request) {
+	playlists, err := h.playlistStore.ListAll()
+	if err != nil {
+		slog.Error("failed to list playlists", "error", err)
+		respondJSONError(w, "Failed to list playlists", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSONOK(w, map[string]interface{}{
+		"playlists": playlists,
+	})
+}

@@ -22,3 +22,8 @@ data/
 # Dependency directory
 # Uncomment if using vendoring
 # vendor/
+
+# Frontend build
+frontend/node_modules/
+frontend/dist/
+frontend/package-lock.json

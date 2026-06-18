@@ -321,6 +321,30 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+// GetResourceAPI returns a single resource as JSON.
+// GET /api/resources/{id}
+func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondJSONError(w, "Resource ID is required", http.StatusBadRequest)
+		return
+	}
+
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		slog.Error("failed to get resource", "id", id, "error", err)
+		respondJSONError(w, "Resource not found", http.StatusNotFound)
+		return
+	}
+
+	// Sanitize — never expose password hash.
+	resource.PasswordHash = ""
+
+	respondJSONOK(w, map[string]interface{}{
+		"resource": resource,
+	})
+}
+
 // DeleteResourceAPI removes a video resource and its file.
 // DELETE /api/resource/{id}
 func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Request) {

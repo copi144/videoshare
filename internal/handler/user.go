@@ -259,6 +259,30 @@ func (h *UserHandler) ServeLogoutAPI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ServeMeAPI returns the current authenticated user's info as JSON.
+// GET /api/me
+func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context(), h.sm)
+	username := middleware.GetUsername(r.Context(), h.sm)
+	userRole := middleware.GetUserRole(r.Context(), h.sm)
+
+	if userID == "" {
+		respondJSONOK(w, map[string]interface{}{
+			"authenticated": false,
+		})
+		return
+	}
+
+	respondJSONOK(w, map[string]interface{}{
+		"authenticated": true,
+		"user": map[string]string{
+			"id":       userID,
+			"username": username,
+			"role":     userRole,
+		},
+	})
+}
+
 // CreateUserAPI creates a new uploader user and returns TOTP setup info as JSON.
 // POST /api/users
 func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {

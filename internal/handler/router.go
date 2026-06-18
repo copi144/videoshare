@@ -73,6 +73,8 @@ func NewRouter(sm *scs.SessionManager, templates fs.FS,
 
 		// JSON API routes that require auth
 		r.Get("/api/resources", resourceH.ListResourcesAPI)
+		r.Get("/api/me", userH.ServeMeAPI)
+		r.Get("/api/categories", categoryH.ListCategoriesAPI)
 		r.Post("/api/logout", userH.ServeLogoutAPI)
 
 		// Category management — admin only
@@ -101,6 +103,7 @@ func NewRouter(sm *scs.SessionManager, templates fs.FS,
 			r.Post("/admin/playlists/{id}/videos/remove", playlistH.RemoveVideoFromPlaylist)
 
 			// JSON API routes for playlists (admin only)
+			r.Get("/api/playlists", playlistH.ListPlaylistsAPI)
 			r.Post("/api/playlists", playlistH.CreatePlaylistAPI)
 			r.Delete("/api/playlists/{id}", playlistH.DeletePlaylistAPI)
 			r.Post("/api/playlists/{id}/videos", playlistH.AddVideoAPI)
@@ -125,6 +128,9 @@ func NewRouter(sm *scs.SessionManager, templates fs.FS,
 
 	// Video streaming — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/video/{id}", streamH.ServeVideo)
+
+	// Resource detail — accessible by both system users and share-link viewers
+	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/resources/{id}", resourceH.GetResourceAPI)
 
 	// Static file serving for embedded assets
 	staticFS := web.Static()
