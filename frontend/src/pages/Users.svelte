@@ -44,38 +44,41 @@
   }
 </script>
 
-<article>
-  <h2>Create User</h2>
-  <form on:submit|preventDefault={handleCreate}>
-    <label for="username">
-      Username
-      <input type="text" id="username" name="username" bind:value={username} required autocomplete="off" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
-    </label>
-    <button type="submit" disabled={loading} aria-busy={loading}>
-      {loading ? 'Creating…' : 'Create User'}
-    </button>
-  </form>
-</article>
+<div class="space-y-4">
+  <!-- Create form -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Create User</h2>
+    <form on:submit|preventDefault={handleCreate} class="flex items-end gap-3">
+      <div class="flex-1">
+        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+        <input type="text" id="username" name="username" bind:value={username} required autocomplete="off" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+      </div>
+      <button type="submit" disabled={loading} aria-busy={loading} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">
+        {loading ? 'Creating…' : 'Create User'}
+      </button>
+    </form>
+  </div>
 
-{#if createdUser}
-  <article>
-    <hgroup>
-      <h2>User Created: {createdUser.username}</h2>
-      <p>Share the following TOTP setup information with the new user. This information will not be shown again.</p>
-    </hgroup>
-    {#if createdUser.qr_image}
-      <figure>
-        <img src={createdUser.qr_image} alt="TOTP QR Code for {createdUser.username}" style="max-width: 256px;" />
-        <figcaption>Scan this QR code with your authenticator app</figcaption>
-      </figure>
-    {/if}
-    <label for="totp_secret">
-      Secret
-      <input type="text" id="totp_secret" value={createdUser.totp_secret} readonly />
-    </label>
-    <label for="totp_uri">
-      TOTP URI
-      <input type="text" id="totp_uri" value={createdUser.totp_uri} readonly />
-    </label>
-  </article>
-{/if}
+  {#if createdUser}
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
+      <h2 class="text-base font-semibold text-gray-900 mb-1">User Created: {createdUser.username}</h2>
+      <p class="text-sm text-gray-500 mb-3">Share the following TOTP setup information with the new user. This information will not be shown again.</p>
+      {#if createdUser.qr_image}
+        <div class="mb-3">
+          <img src={createdUser.qr_image} alt="TOTP QR Code for {createdUser.username}" class="rounded-lg border border-gray-200" style="max-width: 200px;" />
+          <p class="text-xs text-gray-400 mt-1">Scan with your authenticator app</p>
+        </div>
+      {/if}
+      <div class="space-y-2">
+        <div>
+          <label for="totp_secret" class="block text-xs font-medium text-gray-500 mb-1">Secret</label>
+          <input type="text" id="totp_secret" value={createdUser.totp_secret} readonly class="w-full bg-gray-50 text-sm" />
+        </div>
+        <div>
+          <label for="totp_uri" class="block text-xs font-medium text-gray-500 mb-1">TOTP URI</label>
+          <input type="text" id="totp_uri" value={createdUser.totp_uri} readonly class="w-full bg-gray-50 text-sm" />
+        </div>
+      </div>
+    </div>
+  {/if}
+</div>

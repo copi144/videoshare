@@ -601,11 +601,11 @@
 
         <!-- Upload form -->
         <div class="mt-6">
-          <form on:submit|preventDefault={handleUpload}>
-            <label for="title">
-              Title
-              <input type="text" id="title" name="title" bind:value={uploadForm.title} required />
-            </label>
+          <form on:submit|preventDefault={handleUpload} class="upload-form">
+            <div class="upload-row-title">
+              <span class="upload-label">upload</span>
+              <input type="text" id="title" name="title" bind:value={uploadForm.title} placeholder="title" required />
+            </div>
             <div>
               <label for="readme" class="block text-sm font-medium text-gray-700 mb-1">Readme (Markdown)</label>
               <MarkdownEditor
@@ -613,42 +613,42 @@
                 placeholder="Optional markdown description..."
               />
             </div>
-            <label for="category">
-              Category
-              <select id="category" name="category_id" bind:value={uploadForm.category_id} required>
-                <option value="">&mdash; Select a category &mdash;</option>
+            <div class="upload-row-actions">
+              <select id="category" name="category_id" bind:value={uploadForm.category_id} class="upload-category-select" required>
+                <option value="">&mdash; Category &mdash;</option>
                 {#each categories as cat}
                   <option value={cat.id}>
                     {cat.name}{cat.id === 'global' ? ' (public)' : ''}
                   </option>
                 {/each}
               </select>
-            </label>
-            <div>
+              <label class="file-input-label" for="file">
+                {selectedFile ? selectedFile.name : 'Browse…'}
+              </label>
               <input
                 type="file"
                 id="file"
                 name="file"
                 accept={fileAccept}
                 on:change={onFileChange}
+                class="file-input-hidden"
                 required
               />
+              <label class="upload-checkbox-label">
+                <input type="checkbox" bind:checked={uploadForm.noTranscode} />
+                Skip transcoding
+              </label>
             </div>
             {#if !isGlobal && uploadForm.category_id}
-              <label for="password">
-                Password (required for this category)
-                <input type="text" id="password" name="password" bind:value={uploadForm.password} />
-              </label>
+              <div class="upload-row-actions">
+                <input type="text" id="password" name="password" bind:value={uploadForm.password} placeholder="Password (required for this category)" class="upload-password-input" />
+              </div>
             {/if}
-            <label>
-              <input type="checkbox" bind:checked={uploadForm.noTranscode} />
-              Skip transcoding (serve original file directly)
-            </label>
             {#if uploadError}
               <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{uploadError}</div>
             {/if}
-            <button type="submit" disabled={uploading} aria-busy={uploading}>
-              {uploading ? 'Uploading…' : 'Upload'}
+            <button type="submit" disabled={uploading || !selectedFile || !uploadForm.title.trim() || !uploadForm.category_id} class="upload-submit-btn">
+              {uploading ? 'Uploading…' : 'upload'}
             </button>
           </form>
         </div>
@@ -693,7 +693,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.25rem 0;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0;
     border-bottom: 1px solid #e5e7eb;
   }
 
@@ -742,6 +742,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding-top: 0.5rem;
     margin-bottom: 0.5rem;
     gap: 0.5rem;
   }
@@ -750,6 +751,10 @@
     flex: 0 0 auto;
     display: flex;
     gap: 0.5rem;
+  }
+
+  .action-bar-left select:first-child {
+    min-width: 180px;
   }
 
   .action-bar-right {
@@ -868,5 +873,105 @@
     .share-col {
       display: none;
     }
+  }
+
+  .upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .upload-row-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .upload-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #6b7280;
+    white-space: nowrap;
+  }
+
+  .upload-row-title input {
+    flex: 1;
+  }
+
+  .upload-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .upload-category-select {
+    max-width: 180px;
+  }
+
+  .upload-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: #6b7280;
+    white-space: nowrap;
+  }
+
+  .upload-password-input {
+    max-width: 300px;
+  }
+
+  .upload-submit-btn {
+    padding: 0.35rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1px solid #6366f1;
+    border-radius: 0.25rem;
+    background: #6366f1;
+    color: white;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .upload-submit-btn:hover {
+    background: #4f46e5;
+  }
+
+  .upload-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .file-input-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-input-label:hover {
+    background: #f3f4f6;
+  }
+
+  .file-input-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
   }
 </style>

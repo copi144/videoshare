@@ -70,58 +70,58 @@
   }
 </script>
 
-<article>
-  <h2>Create Category</h2>
-  <form on:submit|preventDefault={handleCreate}>
-    <label for="name">
-      Name
-      <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
-    </label>
-    <label for="description">
-      Description
-      <textarea id="description" name="description" bind:value={formDescription}></textarea>
-    </label>
-    <button type="submit">Create</button>
-  </form>
-</article>
-
-<h2>Categories</h2>
-{#if loading}
-  <p aria-busy="true">Loading categories…</p>
-{:else if categories.length === 0}
-  <p>No categories yet. Create one above.</p>
-{:else}
-  <figure>
-    <table class="w-full text-left divide-y divide-gray-200">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Description</th>
-          <th>Created</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each categories as cat}
-          <tr>
-            <td>{cat.name}</td>
-            <td>{cat.description || '—'}</td>
-            <td>{new Date(cat.created_at).toLocaleDateString()}</td>
-            <td>
-              <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" type="button" on:click={() => handleDelete(cat.id)}>
-                Delete
-              </button>
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </figure>
-
-  <!-- Pagination -->
-  <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-    <span>{categories.length > 0 ? offset + 1 : 0}–{offset + categories.length} of {total}</span>
-    <button type="button" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadCategories(); } }} disabled={offset === 0}>Prev</button>
-    <button type="button" on:click={() => { offset += limit; loadCategories(); }} disabled={offset + categories.length >= total}>Next</button>
+<div class="space-y-4">
+  <!-- Create form -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Create Category</h2>
+    <form on:submit|preventDefault={handleCreate} class="space-y-3">
+      <div>
+        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+      </div>
+      <div>
+        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <textarea id="description" name="description" bind:value={formDescription} class="w-full"></textarea>
+      </div>
+      <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
+    </form>
   </div>
-{/if}
+
+  <!-- Table -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Categories</h2>
+    {#if loading}
+      <p class="text-gray-500 text-sm">Loading categories…</p>
+    {:else if categories.length === 0}
+      <p class="text-gray-500 text-sm">No categories yet. Create one above.</p>
+    {:else}
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-gray-200">
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Name</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Description</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Created</th>
+            <th class="py-2 text-xs font-medium text-gray-500 uppercase">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each categories as cat}
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pr-4">{cat.name}</td>
+              <td class="py-2 pr-4 text-gray-500">{cat.description || '—'}</td>
+              <td class="py-2 pr-4 text-gray-500">{new Date(cat.created_at).toLocaleDateString()}</td>
+              <td class="py-2">
+                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(cat.id)}>Delete</button>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      <div class="mt-3 flex items-center gap-2 text-sm">
+        <span class="text-gray-500">{offset + 1}–{offset + categories.length} of {total}</span>
+        <button type="button" class="row-action-btn" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadCategories(); } }} disabled={offset === 0}>Prev</button>
+        <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadCategories(); }} disabled={offset + categories.length >= total}>Next</button>
+      </div>
+    {/if}
+  </div>
+</div>

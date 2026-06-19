@@ -88,75 +88,79 @@
   }
 </script>
 
-{#if success}
-  <article>{success}</article>
-{/if}
+<div class="space-y-4">
+  {#if success}
+    <div class="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">{success}</div>
+  {/if}
 
-<article>
-  <h2>Create Playlist</h2>
-  <form on:submit|preventDefault={handleCreate}>
-    <label for="name">
-      Name
-      <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
-    </label>
-    <label for="description">
-      Description
-      <textarea id="description" name="description" bind:value={formDescription}></textarea>
-    </label>
-    <label for="category">
-      Category
-      <select id="category" name="category_id" bind:value={formCategoryId} required>
-        <option value="">— Select a category —</option>
-        {#each categories as cat}
-          <option value={cat.id}>
-            {cat.name}{cat.id === 'global' ? ' (public)' : ''}
-          </option>
-        {/each}
-      </select>
-    </label>
-    <label for="playlist_type">
-      Type
-      <select id="playlist_type" name="playlist_type" bind:value={formPlaylistType}>
-        <option value="video">Video</option>
-        <option value="audio">Audio</option>
-        <option value="image">Image</option>
-      </select>
-    </label>
-    <button type="submit">Create</button>
-  </form>
-</article>
-
-<h2>Existing Playlists</h2>
-{#if loading}
-  <p aria-busy="true">Loading playlists…</p>
-{:else if playlists.length === 0}
-  <p>No playlists yet. Create one above.</p>
-{:else}
-  <table class="w-full text-left divide-y divide-gray-200">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Category</th>
-        <th>Description</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each playlists as pl}
-        <tr>
-          <td>{pl.name}</td>
-          <td>{categoryMap[pl.category_id] || 'Unknown'}</td>
-          <td>{pl.description || '—'}</td>
-          <td>{new Date(pl.created_at).toLocaleDateString()}</td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-
-  <!-- Pagination -->
-  <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-    <span>{playlists.length > 0 ? offset + 1 : 0}–{offset + playlists.length} of {total}</span>
-    <button type="button" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
-    <button type="button" on:click={() => { offset += limit; loadData(); }} disabled={offset + playlists.length >= total}>Next</button>
+  <!-- Create form -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Create Playlist</h2>
+    <form on:submit|preventDefault={handleCreate} class="space-y-3">
+      <div>
+        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+      </div>
+      <div>
+        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <textarea id="description" name="description" bind:value={formDescription} class="w-full"></textarea>
+      </div>
+      <div class="flex gap-3">
+        <div class="flex-1">
+          <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <select id="category" name="category_id" bind:value={formCategoryId} required class="w-full">
+            <option value="">— Select —</option>
+            {#each categories as cat}
+              <option value={cat.id}>{cat.name}{cat.id === 'global' ? ' (public)' : ''}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="flex-1">
+          <label for="playlist_type" class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+          <select id="playlist_type" name="playlist_type" bind:value={formPlaylistType} class="w-full">
+            <option value="video">Video</option>
+            <option value="audio">Audio</option>
+            <option value="image">Image</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
+    </form>
   </div>
-{/if}
+
+  <!-- Table -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Playlists</h2>
+    {#if loading}
+      <p class="text-gray-500 text-sm">Loading playlists…</p>
+    {:else if playlists.length === 0}
+      <p class="text-gray-500 text-sm">No playlists yet. Create one above.</p>
+    {:else}
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-gray-200">
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Name</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Category</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Description</th>
+            <th class="py-2 text-xs font-medium text-gray-500 uppercase">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each playlists as pl}
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pr-4">{pl.name}</td>
+              <td class="py-2 pr-4 text-gray-500">{categoryMap[pl.category_id] || 'Unknown'}</td>
+              <td class="py-2 pr-4 text-gray-500">{pl.description || '—'}</td>
+              <td class="py-2 text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      <div class="mt-3 flex items-center gap-2 text-sm">
+        <span class="text-gray-500">{offset + 1}–{offset + playlists.length} of {total}</span>
+        <button type="button" class="row-action-btn" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
+        <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadData(); }} disabled={offset + playlists.length >= total}>Next</button>
+      </div>
+    {/if}
+  </div>
+</div>
