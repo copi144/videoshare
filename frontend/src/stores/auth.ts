@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { checkMe, setApiToken } from '../lib/api';
+import { checkMe, setApiToken, getApiToken, heartbeat } from '../lib/api';
 
 export interface UserInfo {
   id: string;
@@ -10,6 +10,8 @@ export interface UserInfo {
 export const user = writable<UserInfo | null>(null);
 export const isAuthenticated = writable<boolean>(false);
 export const apiToken = writable<string | null>(null);
+
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 export async function checkAuth(): Promise<void> {
   try {
@@ -28,5 +30,33 @@ export async function checkAuth(): Promise<void> {
   } catch {
     user.set(null);
     isAuthenticated.set(false);
+  }
+}
+
+export async function startHeartbeat(): Promise<void> {
+  // Send heartbeat immediately on first call
+  try {
+    await heartbeat();
+  } catch {
+    // Silently fail — user may have api_token available from this call
+  }
+  
+  // Clear any existing interval before setting a new one
+  stopHeartbeat();
+  
+  // Then every 5 minutes
+  heartbeatInterval = setInterval(async () => {
+    try {
+      await heartbeat();
+    } catch {
+      // Silently fail — don't disrupt user experience
+    }
+  }, 5 * 60 * 1000);
+}
+
+export function stopHeartbeat(): void {
+  if (heartbeatInterval !== null) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
   }
 }

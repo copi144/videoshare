@@ -80,6 +80,7 @@ func NewRouter(sm *scs.SessionManager,
 		r.Get("/api/me", userH.ServeMeAPI)
 		r.Get("/api/categories", categoryH.ListCategoriesAPI)
 		r.Post("/api/logout", userH.ServeLogoutAPI)
+		r.Post("/api/heartbeat", userH.ServeHeartbeat)
 
 		// Category management — admin only
 		r.Group(func(r chi.Router) {

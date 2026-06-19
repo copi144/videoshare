@@ -62,6 +62,9 @@ export const checkMe = () =>
 export const logout = () =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/logout');
 
+export const heartbeat = () =>
+  request<{ok: boolean}>('POST', '/api/heartbeat');
+
 // Types
 export interface Resource {
   id: string;

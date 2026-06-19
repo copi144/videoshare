@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { checkAuth, isAuthenticated } from './stores/auth';
+  import { checkAuth, isAuthenticated, startHeartbeat } from './stores/auth';
   import Login from './pages/Login.svelte';
   import Admin from './pages/Admin.svelte';
   import Share from './pages/Share.svelte';
@@ -13,6 +13,7 @@
 
   function handleLoginSuccess() {
     view = 'admin';
+    startHeartbeat();
   }
 
   function handleShareSuccess(id: string) {
@@ -31,9 +32,12 @@
     // Check auth state
     await checkAuth();
 
-    // If not on a share page, decide based on auth
-    if (!match) {
-      view = $isAuthenticated ? 'admin' : 'login';
+    // If authenticated (not on a share page), start heartbeat
+    if ($isAuthenticated && !match) {
+      view = 'admin';
+      startHeartbeat();
+    } else if (!match) {
+      view = 'login';
     }
   });
 </script>

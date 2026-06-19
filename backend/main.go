@@ -68,7 +68,7 @@ func main() {
 
 	sm := scs.New()
 	sm.Store = sessStore
-	sm.Lifetime = 24 * time.Hour // session expires after 24 hours
+	sm.Lifetime = 30 * time.Minute // sliding expiry: each API call extends session by 30min
 	sm.Cookie.Secure = cfg.CookieSecure
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.SameSite = http.SameSiteLaxMode

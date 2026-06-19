@@ -127,6 +127,12 @@ func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ServeHeartbeat refreshes the session idle timeout.
+// POST /api/heartbeat
+func (h *UserHandler) ServeHeartbeat(w http.ResponseWriter, r *http.Request) {
+	respondJSONOK(w, map[string]interface{}{"ok": true})
+}
+
 // CreateUserAPI creates a new uploader user and returns TOTP setup info as JSON.
 // POST /api/users
 func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
