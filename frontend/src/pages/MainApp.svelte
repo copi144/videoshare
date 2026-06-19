@@ -168,6 +168,13 @@
     loadPlaylists();
   }
 
+  function onTypeChange() {
+    selectedPlaylistId = null;
+    offset = 0;
+    loadResources();
+    loadPlaylists();
+  }
+
   function onFileChange(e: Event) {
     selectedFile = (e.target as HTMLInputElement).files?.[0] ?? null;
   }
@@ -429,6 +436,11 @@
                 </option>
               {/each}
             </select>
+            <select bind:value={selectedResourceType} on:change={onTypeChange}>
+              <option value="video">Video</option>
+              <option value="audio">Audio</option>
+              <option value="image">Image</option>
+            </select>
           </div>
           <div class="action-bar-right">
             {#if selectMode && selectedIds.size > 0}
@@ -475,8 +487,8 @@
                     <th>Status</th>
                     <th>Views</th>
                     <th>Size</th>
-                    <th>Share Link</th>
-                    <th>Actions</th>
+                    <th class="share-col">Share Link</th>
+                    <th class="actions-col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -510,7 +522,7 @@
                       </td>
                       <td>{res.views}</td>
                       <td>{formatSize(res.file_size)}</td>
-                      <td>
+                      <td class="share-col">
                         <button
                           class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
                           type="button"
@@ -519,9 +531,9 @@
                           {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
                         </button>
                       </td>
-                      <td>
+                      <td class="actions-col">
                         <button
-                          class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+                          class="row-action-btn row-action-retranscode"
                           type="button"
                           on:click={() => { handleRetranscode(res.id); }}
                         >
@@ -529,7 +541,7 @@
                         </button>
                         {#if !res.banned}
                           <button
-                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100"
+                            class="row-action-btn row-action-ban"
                             type="button"
                             on:click={() => { handleBan(res.id); }}
                           >
@@ -537,7 +549,7 @@
                           </button>
                         {/if}
                         <button
-                          class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100"
+                          class="row-action-btn row-action-delete"
                           type="button"
                           on:click={() => { handleDelete(res.id); }}
                         >
@@ -796,6 +808,55 @@
   @media (max-width: 768px) {
     .content-row {
       flex-direction: column;
+    }
+  }
+
+  .row-action-btn {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
+    border: 1px solid;
+    border-radius: 0.25rem;
+    background: white;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .row-action-retranscode {
+    color: #6366f1;
+    border-color: #c7d2fe;
+  }
+
+  .row-action-retranscode:hover {
+    background: #eef2ff;
+  }
+
+  .row-action-ban {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  .row-action-ban:hover {
+    background: #fef2f2;
+  }
+
+  .row-action-delete {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  .row-action-delete:hover {
+    background: #fef2f2;
+  }
+
+  @media (max-width: 900px) {
+    .actions-col {
+      display: none;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .share-col {
+      display: none;
     }
   }
 </style>
