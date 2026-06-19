@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { createPlaylist, listCategories, listPlaylists } from '../lib/api';
+  import { createPlaylist, deletePlaylist, listCategories, listPlaylists } from '../lib/api';
 
   export let onError: ((msg: string) => void) | undefined = undefined;
 
@@ -86,6 +86,19 @@
       onError?.(msg);
     }
   }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Are you sure you want to delete this playlist? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await deletePlaylist(id);
+      await loadData();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to delete playlist.';
+      onError?.(msg);
+    }
+  }
 </script>
 
 <div class="space-y-4">
@@ -107,7 +120,8 @@
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Name</th>
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Category</th>
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Description</th>
-            <th class="py-2 text-xs font-medium text-gray-500 uppercase">Created</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Created</th>
+            <th class="py-2 text-xs font-medium text-gray-500 uppercase">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -116,7 +130,10 @@
               <td class="py-2 pr-4">{pl.name}</td>
               <td class="py-2 pr-4 text-gray-500">{categoryMap[pl.category_id] || 'Unknown'}</td>
               <td class="py-2 pr-4 text-gray-500">{pl.description || '—'}</td>
-              <td class="py-2 text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</td>
+              <td class="py-2 pr-4 text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</td>
+              <td class="py-2">
+                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(pl.id)}>Delete</button>
+              </td>
             </tr>
           {/each}
         </tbody>

@@ -22,58 +22,62 @@
   }
 </script>
 
-<h2>Watch History</h2>
-
-{#if watchHistory.length === 0}
-  <p>No watch history yet. Watch some videos to see them here.</p>
-{:else}
-  <div class="history-actions">
-    <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" on:click={() => { clearWatchHistory(); refresh(); }}>Clear All</button>
+<div class="space-y-4">
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Watch History</h2>
+    {#if watchHistory.length === 0}
+      <p class="text-gray-500 text-sm">No watch history yet. Watch some videos to see them here.</p>
+    {:else}
+      <div class="mb-3">
+        <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50" on:click={() => { clearWatchHistory(); refresh(); }}>Clear All</button>
+      </div>
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-gray-200">
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Title</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Watched</th>
+            <th class="py-2 text-xs font-medium text-gray-500 uppercase"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each watchHistory as entry}
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pr-4"><a href="/#/v/{entry.id}" class="text-indigo-600 hover:text-indigo-800 underline">{entry.title}</a></td>
+              <td class="py-2 pr-4 text-gray-500">{formatRelativeTime(entry.watchedAt)}</td>
+              <td class="py-2">
+                <button class="row-action-btn row-action-delete" type="button" on:click={() => { removeWatchEntry(entry.id); refresh(); }}>Remove</button>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
   </div>
-  <table class="w-full text-left divide-y divide-gray-200">
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Watched</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each watchHistory as entry}
-        <tr>
-          <td><a href="/#/v/{entry.id}">{entry.title}</a></td>
-          <td>{formatRelativeTime(entry.watchedAt)}</td>
-          <td>
-            <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" on:click={() => { removeWatchEntry(entry.id); refresh(); }}>Remove</button>
-          </td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-{/if}
 
-<h2>Search History</h2>
-
-{#if searchHistory.length === 0}
-  <p>No search history yet.</p>
-{:else}
-  <div class="history-actions">
-    <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" on:click={() => { clearSearchHistory(); refresh(); }}>Clear All</button>
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Search History</h2>
+    {#if searchHistory.length === 0}
+      <p class="text-gray-500 text-sm">No search history yet.</p>
+    {:else}
+      <div class="mb-3">
+        <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50" on:click={() => { clearSearchHistory(); refresh(); }}>Clear All</button>
+      </div>
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-gray-200">
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Query</th>
+            <th class="py-2 text-xs font-medium text-gray-500 uppercase">Searched</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each searchHistory as entry}
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pr-4">{entry.query}</td>
+              <td class="py-2 text-gray-500">{formatRelativeTime(entry.searchedAt)}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
   </div>
-  <table class="w-full text-left divide-y divide-gray-200">
-    <thead>
-      <tr>
-        <th>Query</th>
-        <th>Searched</th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each searchHistory as entry}
-        <tr>
-          <td>{entry.query}</td>
-          <td>{formatRelativeTime(entry.searchedAt)}</td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-{/if}
+</div>

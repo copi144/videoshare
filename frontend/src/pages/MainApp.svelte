@@ -481,9 +481,9 @@
         <div class="resource-section">
 
           {#if loading}
-            <p aria-busy="true">Loading videos…</p>
+            <p class="text-gray-500 text-sm" aria-busy="true">Loading videos…</p>
           {:else if resources.length === 0}
-            <p>
+            <p class="text-gray-500 text-sm">
               {#if selectedPlaylistId}
                 No videos in this playlist.
               {:else}
@@ -491,26 +491,26 @@
               {/if}
             </p>
           {:else}
-            <table class="w-full text-left divide-y divide-gray-200">
+            <table class="w-full text-left text-sm">
                 <thead>
-                  <tr>
+                  <tr class="border-b border-gray-200">
                     {#if selectMode}
-                      <th></th>
+                      <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase"></th>
                     {/if}
-                    <th>Title</th>
-                    <th>Category</th>
-                    <th>Status</th>
-                    <th>Views</th>
-                    <th>Size</th>
-                    <th class="share-col">Share Link</th>
-                    <th class="actions-col">Actions</th>
+                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Title</th>
+                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Category</th>
+                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Views</th>
+                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Size</th>
+                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase share-col">Share Link</th>
+                    <th class="py-2 text-xs font-medium text-gray-500 uppercase actions-col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {#each resources as res}
-                    <tr>
+                    <tr class="border-b border-gray-100">
                       {#if selectMode}
-                        <td>
+                        <td class="py-2 pr-4">
                           <input
                             type="checkbox"
                             checked={selectedIds.has(res.id)}
@@ -518,9 +518,9 @@
                           />
                         </td>
                       {/if}
-                      <td>{res.title}</td>
-                      <td>{res.category_name}</td>
-                      <td>
+                      <td class="py-2 pr-4">{res.title}</td>
+                      <td class="py-2 pr-4 text-gray-500">{res.category_name}</td>
+                      <td class="py-2 pr-4">
                         {#if res.banned}
                           <span class="text-red-600 font-bold">Banned</span>
                         {:else if res.transcode_status === 'done'}
@@ -535,9 +535,9 @@
                           <span class="text-gray-400">&mdash;</span>
                         {/if}
                       </td>
-                      <td>{res.views}</td>
-                      <td>{formatSize(res.file_size)}</td>
-                      <td class="share-col">
+                      <td class="py-2 pr-4">{res.views}</td>
+                      <td class="py-2 pr-4 text-gray-500">{formatSize(res.file_size)}</td>
+                      <td class="py-2 pr-4 share-col">
                         <button
                           class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
                           type="button"
@@ -546,7 +546,7 @@
                           {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
                         </button>
                       </td>
-                      <td class="actions-col">
+                      <td class="py-2 actions-col">
                         <button
                           class="row-action-btn row-action-retranscode"
                           type="button"
@@ -577,8 +577,8 @@
               </table>
 
             <!-- Pagination -->
-            <div class="pagination-bar">
-              <span>{offset + 1}&ndash;{offset + resources.length} of {total}</span>
+            <div class="mt-3 flex items-center gap-2 text-sm">
+              <span class="text-gray-500">{offset + 1}&ndash;{offset + resources.length} of {total}</span>
               <button
                 class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 type="button"
