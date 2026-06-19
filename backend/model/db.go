@@ -203,6 +203,14 @@ func migrate(db *sql.DB) error {
 			username TEXT NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		`CREATE TABLE IF NOT EXISTS share_links (
+			id TEXT PRIMARY KEY,
+			resource_id TEXT NOT NULL REFERENCES resources(id),
+			password TEXT NOT NULL,
+			expires_at DATETIME,
+			created_by TEXT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 	}
 
 	for _, q := range tables {

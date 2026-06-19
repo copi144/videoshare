@@ -9,6 +9,7 @@
     banResource,
     listCategories,
     listPlaylists,
+    createShareLink,
   } from '../lib/api';
   import TabHistory from './TabHistory.svelte';
   import Categories from './Categories.svelte';
@@ -86,6 +87,15 @@
   let uploadError: string | null = null;
   let uploading = false;
   let copySuccess: string | null = null;
+  
+  // --- Create Link modal ---
+  
+  let showCreateLink = false;
+  let createLinkResourceId = '';
+  let createLinkExpiry = 1;
+  let createLinkUrl = '';
+  let createLinkLoading = false;
+  let createLinkError: string | null = null;
 
   // --- File type filter (driven by top type selector) ---
   const videoAccept = 'video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv';
@@ -364,6 +374,40 @@
     );
   }
 
+  async function openCreateLink(id: string) {
+    createLinkResourceId = id;
+    createLinkExpiry = 1;
+    createLinkUrl = '';
+    createLinkError = null;
+    showCreateLink = true;
+  }
+
+  async function handleCreateLink() {
+    createLinkLoading = true;
+    createLinkError = null;
+    try {
+      const result = await createShareLink(createLinkResourceId, createLinkExpiry);
+      if (result.url) {
+        const fullUrl = `${window.location.origin}${result.url}`;
+        navigator.clipboard.writeText(fullUrl).then(
+          () => { createLinkUrl = result.url; },
+          () => { createLinkUrl = result.url; }
+        );
+      }
+    } catch (e: unknown) {
+      createLinkError = e instanceof Error ? e.message : 'Failed to create link.';
+    } finally {
+      createLinkLoading = false;
+    }
+  }
+
+  function closeCreateLink() {
+    showCreateLink = false;
+    createLinkResourceId = '';
+    createLinkUrl = '';
+    createLinkError = null;
+  }
+
   function formatSize(bytes: number): string {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -538,13 +582,23 @@
                       <td class="py-2 pr-4">{res.views}</td>
                       <td class="py-2 pr-4 text-gray-500">{formatSize(res.file_size)}</td>
                       <td class="py-2 pr-4 share-col">
-                        <button
-                          class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
-                          type="button"
-                          on:click={() => { copyShareLink(res.id); }}
-                        >
-                          {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
-                        </button>
+                        {#if res.category_id === 'global'}
+                          <button
+                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+                            type="button"
+                            on:click={() => { copyShareLink(res.id); }}
+                          >
+                            {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
+                          </button>
+                        {:else}
+                          <button
+                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+                            type="button"
+                            on:click={() => { openCreateLink(res.id); }}
+                          >
+                            Create Link
+                          </button>
+                        {/if}
                       </td>
                       <td class="py-2 actions-col">
                         <button
@@ -666,6 +720,48 @@
 
       {:else if activeTab === 'playlists'}
         <Playlists onError={setError} />
+      {/if}
+
+      {#if showCreateLink}
+        <!-- Overlay -->
+        <div class="fixed inset-0 bg-black/30 z-40" on:click={closeCreateLink}></div>
+        <!-- Modal -->
+        <div class="fixed inset-0 flex items-center justify-center z-50">
+          <div class="rounded-lg border border-gray-200 bg-white p-6 max-w-md w-full shadow-xl mx-4">
+            <h3 class="text-base font-semibold text-gray-900 mb-3">Create Share Link</h3>
+            
+            {#if createLinkUrl}
+              <div class="space-y-3">
+                <div class="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+                  Link created! Copied to clipboard.
+                </div>
+                <div class="text-sm text-gray-500 break-all">{window.location.origin}{createLinkUrl}</div>
+                <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50" type="button" on:click={closeCreateLink}>Close</button>
+              </div>
+            {:else}
+              <div class="space-y-3">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Link expires after</label>
+                <select bind:value={createLinkExpiry} class="w-full">
+                  <option value={1}>1 day</option>
+                  <option value={3}>3 days</option>
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                </select>
+                
+                {#if createLinkError}
+                  <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{createLinkError}</div>
+                {/if}
+                
+                <div class="flex gap-2 justify-end">
+                  <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50" type="button" on:click={closeCreateLink}>Cancel</button>
+                  <button class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" type="button" disabled={createLinkLoading} on:click={handleCreateLink}>
+                    {createLinkLoading ? 'Creating…' : 'Create Link'}
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
+        </div>
       {/if}
 
       <ConfirmModal

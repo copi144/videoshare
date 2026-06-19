@@ -181,6 +181,16 @@ export const addVideoToPlaylist = (playlistId: string, resourceId: string) =>
 export const removeVideoFromPlaylist = (playlistId: string, resourceId: string) =>
   request<{ok: boolean}>('DELETE', `/api/playlists/${playlistId}/videos/${resourceId}`);
 
+// Share Links
+export const createShareLink = (resourceId: string, expiresInDays: number) =>
+  request<{ok: boolean; url: string; id: string; password: string; expires_at: string | null}>('POST', '/api/share-links', { resource_id: resourceId, expires_in_days: expiresInDays });
+
+export const listShareLinks = (resourceId: string) =>
+  request<{share_links: Array<{id: string; resource_id: string; expires_at: string | null; created_by: string; created_at: string}>}>('GET', `/api/share-links?resource_id=${resourceId}`);
+
+export const deleteShareLink = (id: string) =>
+  request<{ok: boolean}>('DELETE', `/api/share-links/${id}`);
+
 // Users
 export const createUser = (username: string) =>
   request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { username });

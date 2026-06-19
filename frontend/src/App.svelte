@@ -10,22 +10,25 @@
 
   let view: View = 'login';
   let shareId: string | null = null;
+  let sharePassword: string | null = null;
 
   function handleLoginSuccess() {
     view = 'admin';
     startHeartbeat();
   }
 
-  function handleShareSuccess(id: string) {
+  function handleShareSuccess(id: string, password?: string) {
     shareId = id;
+    sharePassword = password || null;
     view = 'watch';
   }
 
   // Extract share ID from hash and navigate to share/watch view
   function handleHashChange() {
-    const match = window.location.hash.match(/^#\/v\/([^/]+)(?:\/watch)?\/?$/);
+    const match = window.location.hash.match(/^#\/v\/([^/]+?)(?:\/([a-f0-9]+))?(?:\/watch)?\/?$/);
     if (match) {
       shareId = match[1];
+      sharePassword = match?.[2] || null;
       view = 'share';
     } else {
       // Hash doesn't match video route — return to admin or login
@@ -39,9 +42,10 @@
 
   onMount(async () => {
     // Check if this is a share URL
-    const match = window.location.hash.match(/^#\/v\/([^/]+)(?:\/watch)?\/?$/);
+    const match = window.location.hash.match(/^#\/v\/([^/]+?)(?:\/([a-f0-9]+))?(?:\/watch)?\/?$/);
     if (match) {
       shareId = match[1];
+      sharePassword = match?.[2] || null;
       view = 'share';
     }
 
@@ -76,7 +80,7 @@
   {:else if view === 'admin'}
     <MainApp />
   {:else if view === 'share' && shareId}
-    <Share id={shareId} onSuccess={handleShareSuccess} />
+    <Share id={shareId} password={sharePassword || ''} onSuccess={handleShareSuccess} />
   {:else if view === 'watch' && shareId}
     <Watch id={shareId} />
   {/if}

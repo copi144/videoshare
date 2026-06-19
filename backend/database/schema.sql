@@ -61,3 +61,12 @@ CREATE TABLE playlist_videos (
     sort_order INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (playlist_id, resource_id)
 );
+
+CREATE TABLE share_links (
+    id TEXT PRIMARY KEY,
+    resource_id TEXT NOT NULL REFERENCES resources(id),
+    password TEXT NOT NULL,
+    expires_at DATETIME,
+    created_by TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

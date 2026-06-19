@@ -12,7 +12,6 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/pquerna/otp/totp"
-	"golang.org/x/crypto/bcrypt"
 
 	"videoshare/middleware"
 	"videoshare/model"
@@ -20,19 +19,21 @@ import (
 
 // SessionHandler handles session creation (login, share auth, token auth).
 type SessionHandler struct {
-	userStore     *model.UserStore
-	resourceStore *model.ResourceStore
-	sm            *scs.SessionManager
-	db            *sql.DB
+	userStore      *model.UserStore
+	resourceStore  *model.ResourceStore
+	shareLinkStore *model.ShareLinkStore
+	sm             *scs.SessionManager
+	db             *sql.DB
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, sm *scs.SessionManager, db *sql.DB) *SessionHandler {
+func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, shareLinkStore *model.ShareLinkStore, sm *scs.SessionManager, db *sql.DB) *SessionHandler {
 	return &SessionHandler{
-		userStore:     userStore,
-		resourceStore: resourceStore,
-		sm:            sm,
-		db:            db,
+		userStore:      userStore,
+		resourceStore:  resourceStore,
+		shareLinkStore: shareLinkStore,
+		sm:             sm,
+		db:             db,
 	}
 }
 
@@ -165,8 +166,14 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(resource.PasswordHash), []byte(req.Password)); err != nil {
-		respondJSONError(w, "Invalid password.", http.StatusUnauthorized)
+	// Validate against share_links table
+	if _, err := h.shareLinkStore.GetByResourceAndPassword(req.ResourceID, req.Password); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondJSONError(w, "Invalid or expired link.", http.StatusUnauthorized)
+			return
+		}
+		slog.Error("failed to validate share link", "resource_id", req.ResourceID, "error", err)
+		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 

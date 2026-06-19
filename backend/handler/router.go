@@ -57,7 +57,8 @@ func NewRouter(sm *scs.SessionManager,
 	userH := NewUserHandler(userStore, sm, db)
 	authH := NewAuthHandler(resourceStore, sm)
 	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, userStore, playlistStore, transcodeQueue, ffmpegPath)
-	sessionH := NewSessionHandler(userStore, resourceStore, sm, db)
+	shareLinkH := NewShareLinkHandler(model.NewShareLinkStore(db), resourceStore)
+	sessionH := NewSessionHandler(userStore, resourceStore, model.NewShareLinkStore(db), sm, db)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
 	categoryH := NewCategoryHandler(categoryStore, userStore, sm)
@@ -115,6 +116,11 @@ func NewRouter(sm *scs.SessionManager,
 			// JSON API routes for users (admin only)
 			r.Post("/api/users", userH.CreateUserAPI)
 		})
+
+		// Share link management — requires user auth
+		r.Post("/api/share-links", shareLinkH.CreateShareLinkAPI)
+		r.Get("/api/share-links", shareLinkH.ListShareLinksAPI)
+		r.Delete("/api/share-links/{id}", shareLinkH.DeleteShareLinkAPI)
 	})
 
 	// Video streaming — accessible by both system users and share-link viewers
