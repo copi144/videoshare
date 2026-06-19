@@ -1,12 +1,42 @@
 <script lang="ts">
-  import { shareAuth } from '../lib/api';
+  import { onMount } from 'svelte';
+  import { shareAuth, getResource } from '../lib/api';
 
   export let id: string;
   export let onSuccess: (id: string) => void;
 
   let password = '';
   let error: string | null = null;
-  let loading = false;
+  let loading = true;
+  let needsPassword = false;
+
+  onMount(async () => {
+    if (!id) {
+      error = 'Invalid video ID.';
+      loading = false;
+      return;
+    }
+
+    try {
+      const resource = await getResource(id);
+      if (resource.category_id === 'global') {
+        // Public video — auto-authenticate and redirect
+        const result = await shareAuth(id, '');
+        if (result.ok) {
+          onSuccess(id);
+          return;
+        }
+        error = 'Failed to access video.';
+      } else {
+        // Password-protected — show the form
+        needsPassword = true;
+      }
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Failed to load video info.';
+    } finally {
+      loading = false;
+    }
+  });
 
   async function handleSubmit() {
     error = null;
@@ -26,18 +56,24 @@
   }
 </script>
 
-<h1>Enter Video Password</h1>
-<article>
-  <form on:submit|preventDefault={handleSubmit}>
-    <label for="password">
-      Password
-      <input type="password" id="password" name="password" bind:value={password} required autocomplete="off" />
-    </label>
-    {#if error}
-      <article class="error-box">{error}</article>
-    {/if}
-    <button type="submit" disabled={loading} aria-busy={loading}>
-      {loading ? 'Authenticating…' : 'Access Video'}
-    </button>
-  </form>
-</article>
+{#if loading}
+  <p aria-busy="true">Checking video access…</p>
+{:else if needsPassword}
+  <h1>Enter Video Password</h1>
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <form on:submit|preventDefault={handleSubmit}>
+      <label for="password">
+        Password
+        <input type="password" id="password" name="password" bind:value={password} required autocomplete="off" />
+      </label>
+      {#if error}
+        <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
+      {/if}
+      <button type="submit" disabled={loading} aria-busy={loading}>
+        {loading ? 'Authenticating…' : 'Access Video'}
+      </button>
+    </form>
+  </div>
+{:else if error}
+  <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
+{/if}

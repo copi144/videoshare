@@ -53,7 +53,7 @@
       />
     </label>
     {#if error}
-      <article class="error-box">{error}</article>
+      <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
     {/if}
     <button type="submit" disabled={loading} aria-busy={loading}>
       {loading ? 'Logging in…' : 'Login'}

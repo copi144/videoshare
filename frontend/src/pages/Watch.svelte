@@ -86,24 +86,24 @@
 {#if loading}
   <p aria-busy="true">Loading video…</p>
 {:else if error}
-  <article class="error-box">{error}</article>
+  <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
 {:else if resource.banned}
-  <article class="error-box">This video has been banned.</article>
+  <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">This video has been banned.</div>
 {:else if resource}
   <h2>{resource.title}</h2>
-  <article>
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
     <video controls bind:this={videoRef} style="width: 100%; max-height: 80vh;">
       <track kind="captions" label="No captions available" />
       Your browser does not support the video tag.
     </video>
-  </article>
+  </div>
   {#if resource.readme}
-    <article>
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
       <pre style="white-space: pre-wrap; margin: 0; font-family: inherit;">{resource.readme}</pre>
-    </article>
+    </div>
   {:else}
-    <p style="color: var(--muted-color, #888); font-style: italic;">No description</p>
+    <p class="text-gray-400 italic">No description</p>
   {/if}
   <p>Views: {resource.views} | Size: {formatSize(resource.file_size)} | Uploaded by: {resource.uploaded_username}</p>
-  <a href="/v/{resource.id}/download" class="outline" role="button">Download Original</a>
+  <a href="/v/{resource.id}/download" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 no-underline">Download Original</a>
 {/if}

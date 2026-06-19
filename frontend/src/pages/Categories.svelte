@@ -70,8 +70,6 @@
   }
 </script>
 
-<h1>Category Management</h1>
-
 <article>
   <h2>Create Category</h2>
   <form on:submit|preventDefault={handleCreate}>
@@ -94,7 +92,7 @@
   <p>No categories yet. Create one above.</p>
 {:else}
   <figure>
-    <table role="grid">
+    <table class="w-full text-left divide-y divide-gray-200">
       <thead>
         <tr>
           <th>Name</th>
@@ -110,7 +108,7 @@
             <td>{cat.description || '—'}</td>
             <td>{new Date(cat.created_at).toLocaleDateString()}</td>
             <td>
-              <button class="outline secondary" type="button" on:click={() => handleDelete(cat.id)}>
+              <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" type="button" on:click={() => handleDelete(cat.id)}>
                 Delete
               </button>
             </td>

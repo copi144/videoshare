@@ -39,10 +39,15 @@
     } else if (!match) {
       view = 'login';
     }
+
+    // Rewrite non-share URLs to / so only / is visible in the address bar
+    if (!match) {
+      history.replaceState(null, '', '/');
+    }
   });
 </script>
 
-<main class="container">
+<main class="mx-auto px-4 sm:px-6">
   {#if view === 'login'}
     <Login onSuccess={handleLoginSuccess} />
   {:else if view === 'admin'}
@@ -58,9 +63,5 @@
   :global(body) {
     margin: 0;
     padding: 0;
-  }
-  :global(main.container) {
-    padding-top: 1rem;
-    padding-bottom: 2rem;
   }
 </style>

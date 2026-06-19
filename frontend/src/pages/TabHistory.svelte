@@ -28,9 +28,9 @@
   <p>No watch history yet. Watch some videos to see them here.</p>
 {:else}
   <div class="history-actions">
-    <button class="outline secondary" on:click={() => { clearWatchHistory(); refresh(); }}>Clear All</button>
+    <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" on:click={() => { clearWatchHistory(); refresh(); }}>Clear All</button>
   </div>
-  <table role="grid">
+  <table class="w-full text-left divide-y divide-gray-200">
     <thead>
       <tr>
         <th>Title</th>
@@ -44,7 +44,7 @@
           <td><a href="/s/{entry.id}">{entry.title}</a></td>
           <td>{formatRelativeTime(entry.watchedAt)}</td>
           <td>
-            <button class="outline secondary" on:click={() => { removeWatchEntry(entry.id); refresh(); }}>Remove</button>
+            <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" on:click={() => { removeWatchEntry(entry.id); refresh(); }}>Remove</button>
           </td>
         </tr>
       {/each}
@@ -58,9 +58,9 @@
   <p>No search history yet.</p>
 {:else}
   <div class="history-actions">
-    <button class="outline secondary" on:click={() => { clearSearchHistory(); refresh(); }}>Clear All</button>
+    <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" on:click={() => { clearSearchHistory(); refresh(); }}>Clear All</button>
   </div>
-  <table role="grid">
+  <table class="w-full text-left divide-y divide-gray-200">
     <thead>
       <tr>
         <th>Query</th>

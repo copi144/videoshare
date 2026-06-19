@@ -86,8 +86,6 @@
   }
 </script>
 
-<h1>Playlist Management</h1>
-
 {#if success}
   <article>{success}</article>
 {/if}
@@ -124,7 +122,7 @@
 {:else if playlists.length === 0}
   <p>No playlists yet. Create one above.</p>
 {:else}
-  <table role="grid">
+  <table class="w-full text-left divide-y divide-gray-200">
     <thead>
       <tr>
         <th>Name</th>

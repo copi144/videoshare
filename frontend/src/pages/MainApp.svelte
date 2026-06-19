@@ -14,6 +14,7 @@
   import Categories from './Categories.svelte';
   import Playlists from './Playlists.svelte';
   import Users from './Users.svelte';
+  import ConfirmModal from '../components/ConfirmModal.svelte';
 
   // --- Types ---
 
@@ -53,7 +54,7 @@
 
   // --- Tab state ---
 
-  let activeTab: 'browse' | 'history' | 'users' = 'browse';
+  let activeTab: 'browse' | 'history' | 'users' | 'categories' | 'playlists' = 'browse';
 
   // --- Category / Playlist filtering ---
 
@@ -63,10 +64,6 @@
   let playlists: Playlist[] = [];
 
   $: categoryPlaylists = playlists.filter((pl) => pl.category_id === selectedCategoryId);
-
-  // --- Sidebar ---
-
-  let showSidebar = false;
 
   // --- Resources ---
 
@@ -89,6 +86,22 @@
   let uploadError: string | null = null;
   let uploading = false;
   let copySuccess: string | null = null;
+
+  // --- Confirm modal ---
+
+  let showConfirm = false;
+  let confirmTitle = '';
+  let confirmMessage = '';
+  let confirmLabel = 'Confirm';
+  let pendingConfirm: (() => Promise<void>) | null = null;
+
+  function openConfirm(title: string, message: string, label: string, action: () => Promise<void>) {
+    confirmTitle = title;
+    confirmMessage = message;
+    confirmLabel = label;
+    pendingConfirm = action;
+    showConfirm = true;
+  }
 
   $: selectedCategory = categories.find((c) => c.id === uploadForm.category_id);
   $: isGlobal = selectedCategory ? selectedCategory.id === 'global' : false;
@@ -201,64 +214,84 @@
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
-      return;
-    }
-    try {
-      await deleteResource(id);
-      await loadResources();
-    } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to delete resource.';
-    }
+    openConfirm(
+      'Delete Video',
+      'Are you sure you want to delete this video? This action cannot be undone.',
+      'Delete',
+      async () => {
+        await deleteResource(id);
+        await loadResources();
+      }
+    );
   }
 
   async function handleRetranscode(id: string) {
-    try {
-      await retranscode(id);
-      await loadResources();
-    } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to retranscode video.';
-    }
+    openConfirm(
+      'Retranscode Video',
+      'Are you sure you want to retranscode this video?',
+      'Retranscode',
+      async () => {
+        await retranscode(id);
+        await loadResources();
+      }
+    );
   }
 
   async function handleBan(id: string) {
-    if (!confirm('Are you sure you want to ban this video? This will delete the video data and prevent re-upload of the same file.')) {
-      return;
-    }
-    try {
-      await banResource(id);
-      await loadResources();
-    } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to ban resource.';
-    }
+    openConfirm(
+      'Ban Video',
+      'Are you sure you want to ban this video? This will delete the video data and prevent re-upload of the same file.',
+      'Ban',
+      async () => {
+        await banResource(id);
+        await loadResources();
+      }
+    );
   }
 
   async function handleBatchDelete() {
-    if (!confirm(`Delete ${selectedIds.size} selected videos? This action cannot be undone.`)) {
-      return;
-    }
-    try {
-      await Promise.all(Array.from(selectedIds).map((id) => deleteResource(id)));
-      selectedIds = new Set();
-      selectMode = false;
-      await loadResources();
-    } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to delete selected resources.';
-    }
+    openConfirm(
+      'Delete Selected Videos',
+      `Delete ${selectedIds.size} selected videos? This action cannot be undone.`,
+      'Delete All',
+      async () => {
+        await Promise.all(Array.from(selectedIds).map((id) => deleteResource(id)));
+        selectedIds = new Set();
+        selectMode = false;
+        await loadResources();
+      }
+    );
   }
 
   async function handleBatchBan() {
-    if (!confirm(`Ban ${selectedIds.size} selected videos? This will delete video data and prevent re-upload.`)) {
-      return;
+    openConfirm(
+      'Ban Selected Videos',
+      `Ban ${selectedIds.size} selected videos? This will delete video data and prevent re-upload.`,
+      'Ban All',
+      async () => {
+        await Promise.all(Array.from(selectedIds).map((id) => banResource(id)));
+        selectedIds = new Set();
+        selectMode = false;
+        await loadResources();
+      }
+    );
+  }
+
+  async function handleConfirmAction() {
+    if (pendingConfirm) {
+      try {
+        await pendingConfirm();
+      } catch (e: unknown) {
+        error = e instanceof Error ? e.message : 'Action failed.';
+      }
+      pendingConfirm = null;
     }
-    try {
-      await Promise.all(Array.from(selectedIds).map((id) => banResource(id)));
-      selectedIds = new Set();
-      selectMode = false;
-      await loadResources();
-    } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to ban selected resources.';
-    }
+    showConfirm = false;
+  }
+
+  function handleCancelConfirm() {
+    showConfirm = false;
+    pendingConfirm = null;
   }
 
   function toggleSelect(id: string) {
@@ -337,6 +370,20 @@
       >
         History
       </button>
+      <button
+        class="tab"
+        class:active={activeTab === 'categories'}
+        on:click={() => { activeTab = 'categories'; }}
+      >
+        Categories
+      </button>
+      <button
+        class="tab"
+        class:active={activeTab === 'playlists'}
+        on:click={() => { activeTab = 'playlists'; }}
+      >
+        Playlists
+      </button>
       {#if userRole === 'admin'}
         <button
           class="tab"
@@ -347,19 +394,14 @@
         </button>
       {/if}
     </div>
-    <div class="tab-actions">
-      <button class="outline" on:click={() => { showSidebar = !showSidebar; }}>
-        {showSidebar ? 'Close Manage' : 'Manage'}
-      </button>
-    </div>
   </nav>
 
-  <!-- Main content and sidebar -->
+  <!-- Main content -->
   <div class="content-row">
     <!-- Content area -->
-    <div class="content-area" class:with-sidebar={showSidebar}>
+    <div class="content-area">
       {#if error}
-        <article class="error-box">{error}</article>
+        <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
       {/if}
 
       {#if activeTab === 'browse'}
@@ -385,8 +427,7 @@
         <!-- Resource section -->
         <div class="resource-section">
           <div class="section-header">
-            <h2>Videos</h2>
-            <button class="outline" on:click={() => { selectMode = !selectMode; selectedIds = new Set(); }}>
+            <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50" on:click={() => { selectMode = !selectMode; selectedIds = new Set(); }}>
               {selectMode ? 'Done Selecting' : 'Select'}
             </button>
           </div>
@@ -395,9 +436,9 @@
           {#if selectMode && selectedIds.size > 0}
             <div class="batch-bar">
               <span>{selectedIds.size} selected</span>
-              <button on:click={handleBatchDelete}>Delete Selected</button>
+              <button class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700" on:click={handleBatchDelete}>Delete Selected</button>
               {#if userRole === 'admin'}
-                <button on:click={handleBatchBan}>Ban Selected</button>
+                <button class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white rounded-md text-sm hover:bg-red-700" on:click={handleBatchBan}>Ban Selected</button>
               {/if}
             </div>
           {/if}
@@ -409,12 +450,11 @@
               {#if selectedPlaylistId}
                 No videos in this playlist.
               {:else}
-                No videos yet. Upload one from the Manage panel.
+                Upload a video using the form in the Browse tab.
               {/if}
             </p>
           {:else}
-            <figure>
-              <table role="grid">
+            <table class="w-full text-left divide-y divide-gray-200">
                 <thead>
                   <tr>
                     {#if selectMode}
@@ -445,24 +485,24 @@
                       <td>{res.category_name}</td>
                       <td>
                         {#if res.banned}
-                          <span style="color: red; font-weight: bold;">Banned</span>
+                          <span class="text-red-600 font-bold">Banned</span>
                         {:else if res.transcode_status === 'done'}
-                          <span style="color: var(--primary);">Ready</span>
+                          <span class="text-indigo-600">Ready</span>
                         {:else if res.transcode_status === 'processing'}
-                          <span style="color: var(--warning);" aria-busy="true">Processing</span>
+                          <span class="text-yellow-600">Processing</span>
                         {:else if res.transcode_status === 'pending'}
-                          <span style="color: var(--warning);">Pending</span>
+                          <span class="text-yellow-600">Pending</span>
                         {:else if res.transcode_status === 'failed'}
-                          <span style="color: var(--invalid);">Failed</span>
+                          <span class="text-red-600">Failed</span>
                         {:else}
-                          <span style="color: var(--muted-color, #888);">&mdash;</span>
+                          <span class="text-gray-400">&mdash;</span>
                         {/if}
                       </td>
                       <td>{res.views}</td>
                       <td>{formatSize(res.file_size)}</td>
                       <td>
                         <button
-                          class="outline"
+                          class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
                           type="button"
                           on:click={() => { copyShareLink(res.id); }}
                         >
@@ -471,7 +511,7 @@
                       </td>
                       <td>
                         <button
-                          class="outline"
+                          class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
                           type="button"
                           on:click={() => { handleRetranscode(res.id); }}
                         >
@@ -479,7 +519,7 @@
                         </button>
                         {#if !res.banned}
                           <button
-                            class="outline secondary"
+                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100"
                             type="button"
                             on:click={() => { handleBan(res.id); }}
                           >
@@ -487,7 +527,7 @@
                           </button>
                         {/if}
                         <button
-                          class="outline secondary"
+                          class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100"
                           type="button"
                           on:click={() => { handleDelete(res.id); }}
                         >
@@ -498,12 +538,12 @@
                   {/each}
                 </tbody>
               </table>
-            </figure>
 
             <!-- Pagination -->
             <div class="pagination-bar">
               <span>{offset + 1}&ndash;{offset + resources.length} of {total}</span>
               <button
+                class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 type="button"
                 on:click={handlePrevPage}
                 disabled={offset === 0}
@@ -511,6 +551,7 @@
                 Prev
               </button>
               <button
+                class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 type="button"
                 on:click={handleNextPage}
                 disabled={offset + resources.length >= total}
@@ -521,23 +562,8 @@
           {/if}
         </div>
 
-      {:else if activeTab === 'history'}
-        <TabHistory />
-
-      {:else if activeTab === 'users' && userRole === 'admin'}
-        <div class="users-section">
-          <h2>User Management</h2>
-          <Users onError={setError} />
-        </div>
-      {/if}
-    </div>
-
-    <!-- Right sidebar (collapsible) -->
-    {#if showSidebar}
-      <aside class="sidebar">
         <!-- Upload form -->
-        <details open>
-          <summary role="button" class="outline secondary">Upload Video</summary>
+        <div class="mt-6">
           <form on:submit|preventDefault={handleUpload}>
             <label for="title">
               Title
@@ -585,35 +611,39 @@
               Skip transcoding (serve original file directly)
             </label>
             {#if uploadError}
-              <article class="error-box">{uploadError}</article>
+              <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{uploadError}</div>
             {/if}
             <button type="submit" disabled={uploading} aria-busy={uploading}>
               {uploading ? 'Uploading…' : 'Upload'}
             </button>
           </form>
-        </details>
+        </div>
 
-        <!-- Category management -->
-        <details>
-          <summary role="button" class="outline secondary">Categories</summary>
-          <Categories onError={setError} />
-        </details>
+      {:else if activeTab === 'history'}
+        <TabHistory />
 
-        <!-- Playlist management -->
-        <details>
-          <summary role="button" class="outline secondary">Playlists</summary>
-          <Playlists onError={setError} />
-        </details>
+      {:else if activeTab === 'users' && userRole === 'admin'}
+        <div class="users-section">
+          <Users onError={setError} />
+        </div>
 
-        {#if userRole === 'admin'}
-          <!-- User management -->
-          <details>
-            <summary role="button" class="outline secondary">Users</summary>
-            <Users onError={setError} />
-          </details>
-        {/if}
-      </aside>
-    {/if}
+      {:else if activeTab === 'categories'}
+        <Categories onError={setError} />
+
+      {:else if activeTab === 'playlists'}
+        <Playlists onError={setError} />
+      {/if}
+
+      <ConfirmModal
+        show={showConfirm}
+        title={confirmTitle}
+        message={confirmMessage}
+        confirmLabel={confirmLabel}
+        onConfirm={handleConfirmAction}
+        onCancel={handleCancelConfirm}
+      />
+    </div>
+
   </div>
 </div>
 
@@ -628,9 +658,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 0;
-    margin-bottom: 1rem;
-    border-bottom: 1px solid var(--muted-border-color);
+    padding: 0.25rem 0;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid #e5e7eb;
   }
 
   .tab-group {
@@ -638,24 +668,34 @@
     gap: 0.25rem;
   }
 
-  .tab {
+  button.tab {
     background: none;
     border: none;
-    padding: 0.5rem 1rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.9rem;
     cursor: pointer;
-    border-radius: var(--border-radius);
-    color: var(--muted-color);
+    border-radius: 0.375rem;
+    color: #6b7280;
   }
 
-  .tab.active,
+  .tab-group button {
+    font-size: 0.9rem;
+  }
+
+  button.tab.active,
   .tab:hover {
-    background: var(--primary);
-    color: var(--primary-inverse);
+    background: #6366f1;
+    color: white;
+  }
+
+  button.tab.active {
+    border-bottom: 3px solid #6366f1;
+    border-radius: 0.375rem 0.375rem 0 0;
   }
 
   .content-row {
     display: flex;
-    gap: 1.5rem;
+    gap: 0.5rem;
     flex: 1;
   }
 
@@ -664,23 +704,10 @@
     min-width: 0;
   }
 
-  .content-area.with-sidebar {
-    max-width: calc(100% - 380px);
-  }
-
-  .sidebar {
-    width: 360px;
-    flex-shrink: 0;
-    border-left: 1px solid var(--muted-border-color);
-    padding-left: 1rem;
-    max-height: calc(100vh - 150px);
-    overflow-y: auto;
-  }
-
   .selector-bar {
     display: flex;
     gap: 0.5rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
   }
 
   .selector-bar select {
@@ -697,42 +724,26 @@
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    padding: 0.5rem;
-    background: var(--card-background-color);
-    border-radius: var(--border-radius);
-    margin-bottom: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    background: white;
+    border-radius: 0.375rem;
+    margin-bottom: 0.25rem;
   }
 
   .pagination-bar {
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
   }
 
-  .error-box {
-    background: var(--form-element-invalid-border-color, #d32f2f);
-    color: white;
-    padding: 0.5rem 1rem;
-    border-radius: var(--border-radius);
-    margin-bottom: 1rem;
+  figure {
+    margin: 0;
   }
 
   @media (max-width: 768px) {
     .content-row {
       flex-direction: column;
-    }
-
-    .content-area.with-sidebar {
-      max-width: 100%;
-    }
-
-    .sidebar {
-      width: 100%;
-      border-left: none;
-      padding-left: 0;
-      max-height: none;
-      overflow-y: visible;
     }
 
     .selector-bar {

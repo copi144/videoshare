@@ -44,8 +44,6 @@
   }
 </script>
 
-<h1>User Management</h1>
-
 <article>
   <h2>Create User</h2>
   <form on:submit|preventDefault={handleCreate}>
