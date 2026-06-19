@@ -56,6 +56,7 @@ func (h *StreamHandler) ServeHLS(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
 
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 	http.ServeFile(w, r, cleanPath)
 }
 
@@ -109,6 +110,7 @@ func (h *StreamHandler) ServeVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 	http.ServeFile(w, r, cleanPath)
 }
 
@@ -141,6 +143,8 @@ func (h *StreamHandler) ServeDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
+
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 
 	// Set Content-Disposition to force download with original filename.
 	filename := resource.Filename
@@ -179,6 +183,7 @@ func (h *StreamHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 	http.ServeFile(w, r, cleanPath)
 }
 
@@ -201,6 +206,7 @@ func (h *StreamHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 	imagePath := storage.OriginalPath(h.dataDir, storage.ResourceTypeImage, id)
 	// First try the processed image (downsampled).
 	processed := storage.ImagePath(h.dataDir, id, "thumb.jpg")

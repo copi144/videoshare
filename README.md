@@ -1,48 +1,61 @@
 # VideoShare
 
-A single-binary, multi-user video sharing server with password-protected sharing,
-categories, and playlists — written in Go.
+A self-contained media sharing platform — video, audio, and image — packaged as a single Go binary with an embedded Svelte single-page application. Zero runtime dependencies.
 
-**Key Features:**
+## Features
 
-- **Single binary** — one file, zero runtime dependencies
-- **Multi-user system** — two roles: `admin` (full control) and `uploader` (upload
-  and delete own videos only)
-- **Login / Logout** — session-based authentication (24 h expiry) with TOTP
-  (Time-based One-Time Password) — no passwords needed
-- **Categories** — admin-created video categories, assignable to specific uploaders
-- **Playlists** — sub-groups within categories; videos can belong to zero or more
-  playlists
-- **Unassigned videos** — videos not in any playlist shown separately on the
-  management page
-- **Password-protected sharing** — per-video passwords for share links
-- **MP4 streaming** — HTTP range requests for efficient video delivery
-- **Rate limiting** — global 60 requests per minute per IP (applies uniformly to all routes)
-- **SQLite storage** — no external database required; WAL mode for concurrency
-- **Docker support** — multi-stage build, minimal alpine runtime image
+- **Single binary deployment** — CGO_ENABLED=0 static build. One file, nothing else to install.
+- **Multi-user system** — Two roles: `admin` (full control) and `uploader` (upload and delete own media only).
+- **TOTP authentication** — No passwords. Login via authenticator app (Google Authenticator, Authy, etc.).
+- **Session & token auth** — Session cookie for streaming, Bearer token for API access.
+- **Video, audio, and image support** — All media types in one unified system.
+- **HLS transcoding** — Adaptive quality ladder (360p, 720p, 1080p) via ffmpeg with concurrent workers.
+- **Content-addressed storage** — BLAKE3 hashing deduplicates identical files automatically.
+- **Magic-byte detection** — File types identified by content, not extension. Wrong extensions corrected on upload.
+- **Password-protected sharing** — Per-resource passwords for share links (`/#/v/{id}`).
+- **Categories & playlists** — Admin-created categories assignable to uploaders; playlists group resources within categories.
+- **HTTP range request streaming** — Efficient delivery for video and audio.
+- **Rate limiting** — 60 requests/minute per IP.
+- **Readme support** — Markdown descriptions per resource.
+- **In-memory view guard** — Accurate view counting without duplication.
 
 ## Quick Start
 
-### Build from source
+### Prerequisites
+
+- Go 1.26+ (for backend build)
+- Node.js (for frontend build)
+- ffmpeg (for HLS transcoding)
+
+### Build and Run
 
 ```bash
 git clone <repo-url>
 cd videoshare
-cd backend && CGO_ENABLED=0 go build -o ../videoserver ./cmd/server
+
+# Build the frontend SPA
+cd frontend
+npm install
+npm run build
+cd ..
+
+# Copy the SPA into the backend's embedded assets
+cp frontend/dist/index.html backend/web/spa/index.html
+
+# Build the server
+cd backend
+CGO_ENABLED=0 go build -o ../videoserver .
+cd ..
+
+# Run it
 ./videoserver
 ```
 
-The first time you run it, the server:
-1. Creates a SQLite database in `./data/`
-2. Bootstraps an admin user with your configured credentials (or defaults)
-3. Creates all necessary database tables
+### First Boot
 
-### First-run admin setup
+On first run, the server creates a SQLite database, bootstraps the admin account, and prints a TOTP URI and QR code directly in the terminal:
 
-On first boot, the server creates an admin account and displays a TOTP URI and
-QR code directly in the terminal:
-
-```text
+```
 ═══════════════════════════════════════════
   Admin Account Created!
   Username: admin
@@ -53,10 +66,7 @@ QR code directly in the terminal:
 ═══════════════════════════════════════════
 ```
 
-Scan the QR code with any authenticator app, then visit
-`http://localhost:8080/login`, enter `admin` as the username and the 6-digit
-code from your authenticator app. You'll land on the admin dashboard — ready to
-create categories, add uploaders, and start uploading videos.
+Scan the QR code with your authenticator app, then navigate to `http://localhost:8080`. Enter `admin` as the username and the 6-digit code from your authenticator app.
 
 ## Configuration
 
@@ -65,107 +75,181 @@ All configuration is via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `:8080` | Listen address (e.g., `:8080` or `127.0.0.1:8080`) |
-| `DATA_DIR` | `./data` | Data directory for SQLite DB and video storage |
+| `DATA_DIR` | `./data` | Data directory for database and media storage |
 | `ADMIN_USERNAME` | `admin` | Admin login username |
 | `COOKIE_SECURE` | `false` | Set to `true` when using HTTPS |
 | `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg binary |
-| `TRANSCODE_WORKERS` | `1` | Number of concurrent transcodes |
+| `TRANSCODE_WORKERS` | `1` | Number of concurrent HLS transcodes |
 
-## Docker Deployment
+## URL Scheme
 
-```bash
-# Build the image
-docker build -t videoserver .
+### SPA Routes (hash-based)
 
-# Run with persistent data
-docker run -d \
-  --name videoserver \
-  -p 8080:8080 \
-  -e ADMIN_USERNAME=admin \
-  -v ./data:/app/data \
-  videoserver
-```
+| Path | Description |
+|------|-------------|
+| `/#/login` | Login page (TOTP auth) |
+| `/#/v/{hash}` | Video/audio/image watch page |
+| `/#/v/{hash}/watch` | Watch page (after authentication) |
+| `/#/admin` | Admin dashboard (manage users, categories, playlists) |
+| `/#/admin/users` | User management (admin only) |
+| `/#/admin/categories` | Category management (admin only) |
+| `/#/admin/playlists` | Playlist management (admin only) |
 
-### Docker Compose
+### Direct Access Routes
 
-```yaml
-services:
-  videoserver:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - ADMIN_USERNAME=admin
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
-```
+| Path | Description |
+|------|-------------|
+| `/v/{hash}` | Raw video file (direct access) |
+| `/v/{hash}/hls/{path}` | HLS streaming — master.m3u8, segment.ts, etc. |
+| `/v/{hash}/download` | Download original file |
+| `/a/{hash}` | Audio streaming |
+| `/i/{hash}` | Image streaming |
+
+## Authentication Flow
+
+1. **Login**: `POST /api/session` with `{"type": "user", "username": "...", "totp_code": "..."}`
+   - Returns an `api_token` (Bearer token) for API calls
+   - Sets a session cookie automatically for HLS/streaming access
+
+2. **API calls**: Include `Authorization: Bearer <token>` header on all requests.
+
+3. **Share links**: `POST /api/session` with `{"type": "share", "resource_id": "...", "password": "..."}`
+   - Sets a session cookie granting access to HLS streaming for that resource
+
+4. **Token auth**: `POST /api/session` with `{"type": "token", "token": "..."}`
+   - Creates a session from an existing Bearer token
+
+5. **HLS streaming**: Requests include the session cookie, validated by the `RequireUserOrVideoAuth` middleware.
 
 ## API Reference
 
-### Public endpoints (no authentication)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/login` | Login page |
-| POST | `/login` | Login with username + TOTP code |
-| GET | `/s/{id}` | Video share page (password entry) |
-| POST | `/s/{id}/auth` | Verify share password |
-
-### Authenticated endpoints (session required)
+### Session Management
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/` | — | Redirects to `/admin` |
-| GET | `/admin` | User | Main management page (videos, upload form, categories, playlists, unassigned videos) |
-| GET | `/api/resources` | User | List resources (paginated). Query: `?limit=` (default 50, max 100), `?offset=`. Response includes `total`, `limit`, `offset`. |
-| GET | `/api/categories` | User | List categories (paginated). Same query params. Response includes `total`, `limit`, `offset`. For non-admin users the Global category is prepended if not already present (page may contain up to `limit+1` items); `total` reflects the count before the prepend. |
-| GET | `/api/playlists` | Admin | List playlists (paginated). Same query params. Response includes `total`, `limit`, `offset`. |
-| POST | `/api/upload` | User | Upload video (multipart: `file`, `title`, `description`, `password`, `category_id`) |
-| POST | `/api/resource/{id}` | User | Delete video (uses `_method=DELETE`; uploaders can only delete their own) |
-| POST | `/logout` | User | Logout |
+| POST | `/api/session` | None | Create session (`type: "user"`, `type: "share"`, or `type: "token"`) |
+| DELETE | `/api/session` | Bearer | Destroy current session (logout) |
 
-### Admin-only endpoints (admin role required)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/admin/categories` | Category management page |
-| POST | `/admin/categories` | Create category |
-| POST | `/admin/categories/{id}/delete` | Delete category (uses `_method=DELETE`) |
-| POST | `/admin/categories/{id}/uploaders` | Assign uploaders to category |
-| GET | `/admin/playlists` | Playlist management page |
-| POST | `/admin/playlists` | Create playlist |
-| POST | `/admin/playlists/{id}/delete` | Delete playlist (uses `_method=DELETE`) |
-| POST | `/admin/playlists/{id}/videos` | Add video to playlist |
-| POST | `/admin/playlists/{id}/videos/remove` | Remove video from playlist |
-
-### Video streaming
+### Resources
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/video/{id}` | User or share-auth | Video stream with HTTP range request support |
+| GET | `/api/resources` | Bearer | List resources (paginated: `?limit=&offset=`) |
+| GET | `/api/resources/{id}` | Bearer | Resource detail |
+| POST | `/api/upload` | Bearer | Upload media (multipart: `file`, `title`, `description`, `password`, `category_id`) |
+| DELETE | `/api/resources/{id}` | Bearer | Delete resource (uploaders can only delete their own) |
 
-## Security Notes
+### Users
 
-1. **TOTP replaces passwords** — admin and uploader accounts use TOTP
-   (authenticator app). Scan the QR code shown on first boot or when creating
-   uploaders. The TOTP secret is stored in the database and never logged.
-2. **No external keys needed** — all configuration is via environment variables.
-3. **Use a reverse proxy** (nginx, Caddy) for HTTPS termination in production.
-4. **Set `COOKIE_SECURE=true`** when using HTTPS.
-5. **Roles are enforced server-side** — `admin` users have full access;
-   `uploader` users can only upload videos to their assigned categories and
-   delete videos they own.
-6. Video files are stored in `DATA_DIR/videos/` — protect this directory.
-7. The server has built-in rate limiting: 60 requests/minute per IP globally
-   (a single limit applies to all routes, including share authentication endpoints).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/me` | Bearer | Current user info |
+| GET | `/api/users` | Admin | List users |
+| POST | `/api/users` | Admin | Create user (body: `username`, `role`) |
+
+### Categories
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/categories` | Bearer | List categories (paginated) |
+| POST | `/api/categories` | Admin | Create category |
+| PUT | `/api/categories/{id}` | Admin | Update category |
+| DELETE | `/api/categories/{id}` | Admin | Delete category |
+| GET | `/api/categories/{id}/uploaders` | Admin | List assigned uploaders |
+| POST | `/api/categories/{id}/uploaders` | Admin | Assign uploaders to category |
+| DELETE | `/api/categories/{id}/uploaders/{userId}` | Admin | Remove uploader from category |
+
+### Playlists
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/playlists` | Bearer | List playlists (paginated) |
+| POST | `/api/playlists` | Admin | Create playlist |
+| PUT | `/api/playlists/{id}` | Admin | Update playlist |
+| DELETE | `/api/playlists/{id}` | Admin | Delete playlist |
+| GET | `/api/playlists/{id}/resources` | Bearer | List resources in playlist |
+| POST | `/api/playlists/{id}/resources` | Admin | Add resource to playlist |
+| DELETE | `/api/playlists/{id}/resources/{resourceId}` | Admin | Remove resource from playlist |
+
+### Health
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/health` | None | Health check |
+
+## Storage Layout
+
+Media files are stored under `DATA_DIR` organized by type and BLAKE3 hash:
+
+```
+DATA_DIR/
+├── videoshare.db              # SQLite database
+├── video/
+│   └── {xx}/
+│       └── {yy}/
+│           └── {hash}/
+│               ├── original   # Original uploaded file
+│               ├── thumbnail  # Generated thumbnail
+│               └── hls/
+│                   ├── 360p/  # 360p HLS segments
+│                   ├── 720p/  # 720p HLS segments
+│                   ├── 1080p/ # 1080p HLS segments
+│                   └── master.m3u8
+├── audio/
+│   └── {xx}/
+│       └── {yy}/
+│           └── {hash}/
+│               └── original
+└── image/
+    └── {xx}/
+        └── {yy}/
+            └── {hash}/
+                └── original
+```
+
+- `{xx}/{yy}` is derived from the first four hex characters of the BLAKE3 hash (two-level sharding).
+- `{hash}` is the full BLAKE3 content hash, used as the resource ID for content-addressed storage.
+- Duplicate uploads are detected automatically — identical files produce the same hash and reuse existing storage.
 
 ## Tech Stack
 
-- **Backend:** Go 1.25+, Chi v5 router, Go html/template
-- **Database:** modernc.org/sqlite (pure Go, CGO-free), WAL journal mode
-- **Sessions:** SCS v2 session manager with SQLite store (24 h expiry)
-- **Auth:** TOTP (pquerna/otp)
-- **Frontend:** Pico CSS v2 (classless, semantic HTML framework)
-- **Build:** `CGO_ENABLED=0` static binary, multi-stage Docker build
+**Backend:**
+- Go 1.26+
+- Chi v5 router
+- sqlc (type-safe database queries)
+- SCS v2 session manager with SQLite store
+- BLAKE3 hashing (t2bot/ahash)
+- TOTP (pquerna/otp)
+- bcrypt (share passwords)
+
+**Database:**
+- SQLite via modernc.org/sqlite (pure Go, CGO-free)
+- WAL journal mode for concurrent reads
+
+**Frontend:**
+- Svelte 4 SPA
+- Tailwind CSS 3
+- Vite build tool
+- hls.js (HLS playback)
+- marked (Markdown rendering)
+- QRCode.js (TOTP setup QR display)
+
+**Transcoding:**
+- ffmpeg with libx264 and AAC
+- HLS adaptive quality ladder (360p, 720p, 1080p)
+- Concurrent transcoding workers
+
+**Build:**
+- CGO_ENABLED=0 static binary
+- vite-plugin-singlefile (SPA embedded into Go binary at compile time)
+
+## Security Notes
+
+1. **TOTP replaces passwords** — All user accounts authenticate via time-based one-time passwords. The TOTP secret is stored in the database and never logged.
+2. **Bearer tokens** — API access uses tokens returned at login. These are independent of session cookies and can be used for automated clients.
+3. **Session expiry** — Sessions use 30-minute sliding expiry via SCS v2.
+4. **Rate limiting** — 60 requests/minute per IP applies globally to all routes.
+5. **HTTPS** — Use a reverse proxy (nginx, Caddy) for TLS termination in production. Set `COOKIE_SECURE=true` when behind HTTPS.
+6. **File type validation** — Uploaded files are identified by magic bytes, not file extensions. Incorrect extensions are corrected automatically.
+7. **Protect DATA_DIR** — Media files and the database contain all application state. Ensure appropriate filesystem permissions.
+8. **Roles enforced server-side** — Admin users have full access. Uploader users can only upload to assigned categories and delete their own resources.

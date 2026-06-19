@@ -518,7 +518,7 @@
                           />
                         </td>
                       {/if}
-                      <td class="py-2 pr-4">{res.title}</td>
+                      <td class="py-2 pr-4"><a href="/#/v/{res.id}" class="text-indigo-600 hover:text-indigo-800 underline">{res.title}</a></td>
                       <td class="py-2 pr-4 text-gray-500">{res.category_name}</td>
                       <td class="py-2 pr-4">
                         {#if res.banned}
