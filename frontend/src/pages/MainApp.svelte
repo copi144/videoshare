@@ -64,8 +64,6 @@
   let categories: Category[] = [];
   let playlists: Playlist[] = [];
 
-  $: categoryPlaylists = playlists.filter((pl) => pl.category_id === selectedCategoryId);
-
   // --- Resources ---
 
   let resources: Resource[] = [];
@@ -164,13 +162,6 @@
   // --- Event handlers ---
 
   function onCategoryChange() {
-    selectedPlaylistId = null;
-    offset = 0;
-    loadResources();
-    loadPlaylists();
-  }
-
-  function onTypeChange() {
     selectedPlaylistId = null;
     offset = 0;
     loadResources();
@@ -279,6 +270,20 @@
       'Ban All',
       async () => {
         await Promise.all(Array.from(selectedIds).map((id) => banResource(id)));
+        selectedIds = new Set();
+        selectMode = false;
+        await loadResources();
+      }
+    );
+  }
+
+  async function handleBatchRetranscode() {
+    openConfirm(
+      'Retranscode Selected Videos',
+      `Retranscode ${selectedIds.size} selected videos?`,
+      'Retranscode All',
+      async () => {
+        await Promise.all(Array.from(selectedIds).map((id) => retranscode(id)));
         selectedIds = new Set();
         selectMode = false;
         await loadResources();
@@ -414,48 +419,39 @@
       {/if}
 
       {#if activeTab === 'browse'}
-        <!-- Category + Playlist selectors -->
-        <div class="selector-bar">
-          <select bind:value={selectedCategoryId} on:change={onCategoryChange}>
-            {#each categories as cat}
-              <option value={cat.id}>
-                {cat.name}{cat.id === 'global' ? ' (public)' : ''}
-              </option>
-            {/each}
-          </select>
-          <select bind:value={selectedResourceType} on:change={onTypeChange}>
-            <option value="video">Video</option>
-            <option value="audio">Audio</option>
-            <option value="image">Image</option>
-          </select>
-          {#if categoryPlaylists.length > 0}
-            <select bind:value={selectedPlaylistId} on:change={loadResources}>
-              <option value={null}>All videos in category</option>
-              {#each categoryPlaylists as pl}
-                <option value={pl.id}>{pl.name}</option>
+        <!-- Action bar -->
+        <div class="action-bar">
+          <div class="action-bar-left">
+            <select bind:value={selectedCategoryId} on:change={onCategoryChange}>
+              {#each categories as cat}
+                <option value={cat.id}>
+                  {cat.name}{cat.id === 'global' ? ' (public)' : ''}
+                </option>
               {/each}
             </select>
-          {/if}
+          </div>
+          <div class="action-bar-right">
+            {#if selectMode && selectedIds.size > 0}
+              <button class="action-btn retranscode-all" on:click={handleBatchRetranscode}>
+                Re-transcode All
+              </button>
+              {#if userRole === 'admin'}
+                <button class="action-btn ban-all" on:click={handleBatchBan}>
+                  Ban All
+                </button>
+              {/if}
+              <button class="action-btn delete-all" on:click={handleBatchDelete}>
+                Delete All
+              </button>
+            {/if}
+            <button class="action-btn select-btn" on:click={() => { selectMode = !selectMode; selectedIds = new Set(); }}>
+              {selectMode ? 'Done' : 'Select'}
+            </button>
+          </div>
         </div>
 
         <!-- Resource section -->
         <div class="resource-section">
-          <div class="section-header">
-            <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50" on:click={() => { selectMode = !selectMode; selectedIds = new Set(); }}>
-              {selectMode ? 'Done Selecting' : 'Select'}
-            </button>
-          </div>
-
-          <!-- Batch action bar -->
-          {#if selectMode && selectedIds.size > 0}
-            <div class="batch-bar">
-              <span>{selectedIds.size} selected</span>
-              <button class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700" on:click={handleBatchDelete}>Delete Selected</button>
-              {#if userRole === 'admin'}
-                <button class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white rounded-md text-sm hover:bg-red-700" on:click={handleBatchBan}>Ban Selected</button>
-              {/if}
-            </div>
-          {/if}
 
           {#if loading}
             <p aria-busy="true">Loading videos…</p>
@@ -718,30 +714,72 @@
     min-width: 0;
   }
 
-  .selector-bar {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .selector-bar select {
-    flex: 1;
-  }
-
-  .section-header {
+  .action-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 0.5rem;
+    gap: 0.5rem;
   }
 
-  .batch-bar {
+  .action-bar-left {
+    flex: 0 0 auto;
+  }
+
+  .action-bar-left select {
+    min-width: 160px;
+  }
+
+  .action-bar-right {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.25rem;
     align-items: center;
-    padding: 0.25rem 0.5rem;
+  }
+
+  .action-btn {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
     background: white;
-    border-radius: 0.375rem;
-    margin-bottom: 0.25rem;
+    color: #374151;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .action-btn:hover {
+    background: #f3f4f6;
+  }
+
+  .action-btn.retranscode-all {
+    color: #6366f1;
+    border-color: #c7d2fe;
+  }
+
+  .action-btn.retranscode-all:hover {
+    background: #eef2ff;
+  }
+
+  .action-btn.ban-all {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  .action-btn.ban-all:hover {
+    background: #fef2f2;
+  }
+
+  .action-btn.delete-all {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  .action-btn.delete-all:hover {
+    background: #fef2f2;
+  }
+
+  .action-btn.select-btn {
+    font-weight: 500;
   }
 
   .pagination-bar {
@@ -757,10 +795,6 @@
 
   @media (max-width: 768px) {
     .content-row {
-      flex-direction: column;
-    }
-
-    .selector-bar {
       flex-direction: column;
     }
   }
