@@ -41,7 +41,7 @@
     <tbody>
       {#each watchHistory as entry}
         <tr>
-          <td><a href="/v/{entry.id}">{entry.title}</a></td>
+          <td><a href="/#/v/{entry.id}">{entry.title}</a></td>
           <td>{formatRelativeTime(entry.watchedAt)}</td>
           <td>
             <button class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-500 bg-white hover:bg-gray-100" on:click={() => { removeWatchEntry(entry.id); refresh(); }}>Remove</button>

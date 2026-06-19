@@ -23,7 +23,7 @@
 
   onMount(async () => {
     // Check if this is a share URL
-    const match = window.location.pathname.match(/^\/v\/([^/]+)(?:\/watch)?\/?$/);
+    const match = window.location.hash.match(/^#\/v\/([^/]+)(?:\/watch)?\/?$/);
     if (match) {
       shareId = match[1];
       view = 'share';

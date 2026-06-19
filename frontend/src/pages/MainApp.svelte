@@ -340,7 +340,7 @@
   }
 
   function copyShareLink(id: string) {
-    const url = `${window.location.origin}/v/${id}`;
+    const url = `${window.location.origin}/#/v/${id}`;
     navigator.clipboard.writeText(url).then(
       () => {
         copySuccess = id;

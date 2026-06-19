@@ -141,7 +141,7 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		slog.Info("resource auto-authenticated via /api/session", "id", req.ResourceID)
 		respondJSONOK(w, map[string]interface{}{
 			"ok":       true,
-			"redirect": "/v/" + req.ResourceID + "/watch",
+			"redirect": "/#/v/" + req.ResourceID + "/watch",
 		})
 		return
 	}
@@ -160,7 +160,7 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 	slog.Info("resource authenticated via /api/session", "id", req.ResourceID)
 	respondJSONOK(w, map[string]interface{}{
 		"ok":       true,
-		"redirect": "/v/" + req.ResourceID + "/watch",
+		"redirect": "/#/v/" + req.ResourceID + "/watch",
 	})
 }
 
