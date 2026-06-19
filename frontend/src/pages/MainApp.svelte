@@ -60,6 +60,7 @@
 
   let selectedCategoryId: string = 'global';
   let selectedPlaylistId: string | null = null;
+  let selectedResourceType: 'video' | 'audio' | 'image' = 'video';
   let categories: Category[] = [];
   let playlists: Playlist[] = [];
 
@@ -111,12 +112,13 @@
   async function loadResources() {
     error = null;
     try {
-      const params: { limit: number; offset: number; category_id?: string; playlist_id?: string } = { limit, offset };
+      const params: { limit: number; offset: number; category_id?: string; playlist_id?: string; resource_type?: string } = { limit, offset };
       if (selectedPlaylistId) {
         params.playlist_id = selectedPlaylistId;
       } else if (selectedCategoryId) {
         params.category_id = selectedCategoryId;
       }
+      params.resource_type = selectedResourceType;
       const data = await listResources(params);
       resources = data.resources;
       total = data.total;
@@ -136,7 +138,7 @@
 
   async function loadPlaylists() {
     try {
-      const data = await listPlaylists({ category_id: selectedCategoryId });
+      const data = await listPlaylists({ category_id: selectedCategoryId, playlist_type: selectedResourceType });
       playlists = data.playlists;
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to load playlists.';
@@ -162,6 +164,13 @@
   // --- Event handlers ---
 
   function onCategoryChange() {
+    selectedPlaylistId = null;
+    offset = 0;
+    loadResources();
+    loadPlaylists();
+  }
+
+  function onTypeChange() {
     selectedPlaylistId = null;
     offset = 0;
     loadResources();
@@ -413,6 +422,11 @@
                 {cat.name}{cat.id === 'global' ? ' (public)' : ''}
               </option>
             {/each}
+          </select>
+          <select bind:value={selectedResourceType} on:change={onTypeChange}>
+            <option value="video">Video</option>
+            <option value="audio">Audio</option>
+            <option value="image">Image</option>
           </select>
           {#if categoryPlaylists.length > 0}
             <select bind:value={selectedPlaylistId} on:change={loadResources}>

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -80,15 +81,19 @@ func (h *StreamHandler) ServeVideo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Resource not found", http.StatusNotFound)
 		return
 	}
+	if resource.ResourceType != storage.ResourceTypeVideo {
+		http.Error(w, "Not a video resource", http.StatusBadRequest)
+		return
+	}
 	if resource.Banned {
 		http.Error(w, "This video has been banned", http.StatusGone)
 		return
 	}
 
 	// Reconstruct paths using storage helpers.
-	originalPath := storage.OriginalPath(h.dataDir, id)
+	originalPath := storage.OriginalPath(h.dataDir, storage.ResourceTypeVideo, id)
 	cleanPath := filepath.Clean(originalPath)
-	hashDir := filepath.Clean(storage.HashPath(h.dataDir, id))
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, storage.ResourceTypeVideo, id))
 
 	// Path traversal prevention.
 	if !strings.HasPrefix(cleanPath, hashDir) {
@@ -118,14 +123,19 @@ func (h *StreamHandler) ServeDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if resource.ResourceType != storage.ResourceTypeVideo {
+		http.Error(w, "Not a video resource", http.StatusBadRequest)
+		return
+	}
+
 	if resource.Banned {
 		http.Error(w, "This video has been banned", http.StatusGone)
 		return
 	}
 
-	originalPath := storage.OriginalPath(h.dataDir, id)
+	originalPath := storage.OriginalPath(h.dataDir, storage.ResourceTypeVideo, id)
 	cleanPath := filepath.Clean(originalPath)
-	hashDir := filepath.Clean(storage.HashPath(h.dataDir, id))
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, storage.ResourceTypeVideo, id))
 
 	if !strings.HasPrefix(cleanPath, hashDir) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
@@ -141,4 +151,72 @@ func (h *StreamHandler) ServeDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", resource.ContentType)
 
 	http.ServeFile(w, r, cleanPath)
+}
+
+// ServeAudio streams an audio file.
+// GET /a/{id}
+func (h *StreamHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		http.Error(w, "Resource not found", http.StatusNotFound)
+		return
+	}
+	if resource.ResourceType != storage.ResourceTypeAudio {
+		http.Error(w, "Not an audio resource", http.StatusBadRequest)
+		return
+	}
+	if resource.Banned {
+		http.Error(w, "This resource has been banned", http.StatusGone)
+		return
+	}
+
+	audioPath := storage.AudioOutputPath(h.dataDir, id)
+	cleanPath := filepath.Clean(audioPath)
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, storage.ResourceTypeAudio, id))
+	if !strings.HasPrefix(cleanPath, hashDir) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	http.ServeFile(w, r, cleanPath)
+}
+
+// ServeImage serves an image file, preferring the downsampled variant.
+// GET /i/{id}
+func (h *StreamHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		http.Error(w, "Resource not found", http.StatusNotFound)
+		return
+	}
+	if resource.ResourceType != storage.ResourceTypeImage {
+		http.Error(w, "Not an image resource", http.StatusBadRequest)
+		return
+	}
+	if resource.Banned {
+		http.Error(w, "This resource has been banned", http.StatusGone)
+		return
+	}
+
+	imagePath := storage.OriginalPath(h.dataDir, storage.ResourceTypeImage, id)
+	// First try the processed image (downsampled).
+	processed := storage.ImagePath(h.dataDir, id, "thumb")
+	cleanProcessed := filepath.Clean(processed)
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, storage.ResourceTypeImage, id))
+	if strings.HasPrefix(cleanProcessed, hashDir) {
+		if _, err := os.Stat(cleanProcessed); err == nil {
+			http.ServeFile(w, r, cleanProcessed)
+		return
+		}
+	}
+	// Fall back to original.
+	originalPath := filepath.Clean(imagePath)
+	if !strings.HasPrefix(originalPath, hashDir) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	http.ServeFile(w, r, originalPath)
 }

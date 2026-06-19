@@ -41,10 +41,11 @@ func NewPlaylistHandler(
 // POST /api/playlists
 func (h *PlaylistHandler) CreatePlaylistAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		CategoryID  string `json:"category_id"`
-		SortOrder   int    `json:"sort_order"`
+		Name         string `json:"name"`
+		Description  string `json:"description"`
+		CategoryID   string `json:"category_id"`
+		SortOrder    int    `json:"sort_order"`
+		PlaylistType string `json:"playlist_type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
@@ -60,15 +61,25 @@ func (h *PlaylistHandler) CreatePlaylistAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Default to "video" if type is empty, then validate.
+	if req.PlaylistType == "" {
+		req.PlaylistType = "video"
+	}
+	if req.PlaylistType != "video" && req.PlaylistType != "audio" && req.PlaylistType != "image" {
+		respondJSONError(w, "Invalid playlist type", http.StatusBadRequest)
+		return
+	}
+
 	userID := middleware.GetUserID(r.Context(), h.sm)
 
 	pl := &model.Playlist{
-		ID:          uuid.New().String(),
-		CategoryID:  req.CategoryID,
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedBy:   userID,
-		SortOrder:   req.SortOrder,
+		ID:           uuid.New().String(),
+		CategoryID:   req.CategoryID,
+		PlaylistType: req.PlaylistType,
+		Name:         req.Name,
+		Description:  req.Description,
+		CreatedBy:    userID,
+		SortOrder:    req.SortOrder,
 	}
 
 	if err := h.playlistStore.Insert(pl); err != nil {
@@ -77,7 +88,7 @@ func (h *PlaylistHandler) CreatePlaylistAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	slog.Info("playlist created via API", "id", pl.ID, "name", req.Name, "category_id", req.CategoryID)
+	slog.Info("playlist created via API", "id", pl.ID, "name", req.Name, "category_id", req.CategoryID, "playlist_type", req.PlaylistType)
 	respondJSONOK(w, map[string]interface{}{
 		"redirect": "/admin/playlists",
 	})
@@ -190,16 +201,23 @@ func (h *PlaylistHandler) ListPlaylistsAPI(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	playlists, err := h.playlistStore.ListPaginated(limit, offset)
+	var playlists []*model.Playlist
+	var total int
+	var err error
+	playlistType := r.URL.Query().Get("playlist_type")
+	if playlistType != "" {
+		playlists, err = h.playlistStore.ListByTypePaginated(playlistType, limit, offset)
+		if err == nil {
+			total, err = h.playlistStore.CountByType(playlistType)
+		}
+	} else {
+		playlists, err = h.playlistStore.ListPaginated(limit, offset)
+		if err == nil {
+			total, err = h.playlistStore.Count()
+		}
+	}
 	if err != nil {
 		slog.Error("failed to list playlists", "error", err)
-		respondJSONError(w, "Failed to list playlists", http.StatusInternalServerError)
-		return
-	}
-
-	total, err := h.playlistStore.Count()
-	if err != nil {
-		slog.Error("failed to count playlists", "error", err)
 		respondJSONError(w, "Failed to list playlists", http.StatusInternalServerError)
 		return
 	}

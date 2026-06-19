@@ -128,6 +128,22 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Detect resource type from MIME content type.
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "video/mp4" // default for multipart without explicit Content-Type
+	}
+	resourceType := upload.DetectResourceType(contentType)
+	if resourceType == "" {
+		// Fallback: detect by file extension
+		resourceType = upload.DetectResourceTypeByExtension(header.Filename)
+	}
+	if resourceType == "" {
+		slog.Error("unsupported content type", "content_type", contentType, "filename", header.Filename)
+		respondJSONError(w, "Unsupported file type", http.StatusBadRequest)
+		return
+	}
+
 	// Save to temp file while computing BLAKE3 hash via TeeReader.
 	tmpFile, err := os.CreateTemp(h.dataDir, "upload-*")
 	if err != nil {
@@ -149,43 +165,45 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	hashHex := hex.EncodeToString(hashWriter.Sum(nil))
 
-	// Probe video dimensions using ffprobe.
-	dims, probeErr := upload.ProbeVideoDimensions(upload.FFprobePath(h.ffmpegPath), tmpFile.Name())
-	if probeErr != nil {
-		slog.Warn("failed to probe video dimensions, skipping validation", "error", probeErr)
-	} else {
-		// Validate: short side must be >= 144 pixels
-		if dims.MinSide() < upload.MinShortSide {
-			tmpFile.Close()
-			os.Remove(tmpFile.Name())
-			respondError(w, r, http.StatusBadRequest,
-				fmt.Sprintf("Video too small: short side is %dpx, minimum is %dpx", dims.MinSide(), upload.MinShortSide))
-			return
+	// Video-specific validation (dimensions, duration).
+	if resourceType == storage.ResourceTypeVideo {
+		dims, probeErr := upload.ProbeVideoDimensions(upload.FFprobePath(h.ffmpegPath), tmpFile.Name())
+		if probeErr != nil {
+			slog.Warn("failed to probe video dimensions, skipping validation", "error", probeErr)
+		} else {
+			// Validate: short side must be >= 144 pixels
+			if dims.MinSide() < upload.MinShortSide {
+				tmpFile.Close()
+				os.Remove(tmpFile.Name())
+				respondError(w, r, http.StatusBadRequest,
+					fmt.Sprintf("Video too small: short side is %dpx, minimum is %dpx", dims.MinSide(), upload.MinShortSide))
+				return
+			}
+			// Validate: aspect ratio must not exceed 4:1
+			if dims.AspectRatio() > upload.MaxAspectRatio {
+				tmpFile.Close()
+				os.Remove(tmpFile.Name())
+				respondError(w, r, http.StatusBadRequest,
+					fmt.Sprintf("Video aspect ratio %.1f:1 exceeds maximum 4:1", dims.AspectRatio()))
+				return
+			}
+			// Auto-disable transcoding for videos with short side < 360px
+			if dims.MinSide() < upload.NoTranscodeSide {
+				noTranscode = true
+			}
 		}
-		// Validate: aspect ratio must not exceed 4:1
-		if dims.AspectRatio() > upload.MaxAspectRatio {
-			tmpFile.Close()
-			os.Remove(tmpFile.Name())
-			respondError(w, r, http.StatusBadRequest,
-				fmt.Sprintf("Video aspect ratio %.1f:1 exceeds maximum 4:1", dims.AspectRatio()))
-			return
-		}
-		// Auto-disable transcoding for videos with short side < 360px
-		if dims.MinSide() < upload.NoTranscodeSide {
-			noTranscode = true
-		}
-	}
 
-	// Probe video duration.
-	duration, durErr := upload.ProbeVideoDuration(upload.FFprobePath(h.ffmpegPath), tmpFile.Name())
-	if durErr != nil {
-		slog.Warn("failed to probe video duration, skipping validation", "error", durErr)
-	} else if duration < upload.MinDuration {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
-		respondError(w, r, http.StatusBadRequest,
-			fmt.Sprintf("Video too short: %.2f seconds, minimum is %.0f second", duration, upload.MinDuration))
-		return
+		// Probe video duration.
+		duration, durErr := upload.ProbeVideoDuration(upload.FFprobePath(h.ffmpegPath), tmpFile.Name())
+		if durErr != nil {
+			slog.Warn("failed to probe video duration, skipping validation", "error", durErr)
+		} else if duration < upload.MinDuration {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			respondError(w, r, http.StatusBadRequest,
+				fmt.Sprintf("Video too short: %.2f seconds, minimum is %.0f second", duration, upload.MinDuration))
+			return
+		}
 	}
 
 	// Check for duplicate content by hash.
@@ -201,7 +219,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create hash-based directory structure.
-	hashDir := storage.HashPath(h.dataDir, hashHex)
+	hashDir := storage.HashPath(h.dataDir, resourceType, hashHex)
 	if err := os.MkdirAll(hashDir, 0o755); err != nil {
 		slog.Error("failed to create hash directory", "error", err)
 		respondError(w, r, http.StatusInternalServerError, "Storage error")
@@ -209,7 +227,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Move temp file to final location (must be on same filesystem as dataDir).
-	originalPath := storage.OriginalPath(h.dataDir, hashHex)
+	originalPath := storage.OriginalPath(h.dataDir, resourceType, hashHex)
 	if err := os.Rename(tmpFile.Name(), originalPath); err != nil {
 		slog.Error("failed to move temp file", "error", err)
 		os.RemoveAll(hashDir)
@@ -219,17 +237,12 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	// Write readme file if provided.
 	if readme != "" {
-		if err := os.WriteFile(storage.ReadmePath(h.dataDir, hashHex), []byte(readme), 0o644); err != nil {
+		if err := os.WriteFile(storage.ReadmePath(h.dataDir, resourceType, hashHex), []byte(readme), 0o644); err != nil {
 			slog.Error("failed to write readme", "error", err)
 			os.RemoveAll(hashDir)
 			respondError(w, r, http.StatusInternalServerError, "Storage error")
 			return
 		}
-	}
-
-	contentType := header.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "video/mp4"
 	}
 
 	resource := &model.Resource{
@@ -239,6 +252,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Filename:     header.Filename,
 		FileSize:     header.Size,
 		ContentType:  contentType,
+		ResourceType: resourceType,
 		UploadedBy:   userID,
 		CategoryID:   categoryID,
 		NoTranscode:  noTranscode,
@@ -258,14 +272,23 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Submit transcode job (non-blocking), unless skipped.
-	if !noTranscode {
+	if resourceType == storage.ResourceTypeVideo {
+		if !noTranscode {
+			h.transcodeQueue.Submit(transcode.Job{
+				ResourceID: hashHex,
+				InputPath:  originalPath,
+				OutputDir:  storage.HLSPath(h.dataDir, hashHex),
+			})
+		} else {
+			slog.Info("transcode skipped by uploader request", "resource_id", hashHex)
+		}
+	} else {
+		// Audio and image resources always get processed (no noTranscode flag).
 		h.transcodeQueue.Submit(transcode.Job{
 			ResourceID: hashHex,
 			InputPath:  originalPath,
-			OutputDir:  storage.HLSPath(h.dataDir, hashHex),
+			OutputDir:  storage.HashPath(h.dataDir, resourceType, hashHex),
 		})
-	} else {
-		slog.Info("transcode skipped by uploader request", "resource_id", hashHex)
 	}
 
 	respondJSONOK(w, map[string]interface{}{
@@ -310,7 +333,20 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 	var resources []*model.Resource
 	var total int
 	var err error
-	if userRole == "admin" {
+	resourceType := r.URL.Query().Get("resource_type")
+	if resourceType != "" {
+		if userRole == "admin" {
+			resources, err = h.store.ListByTypePaginated(resourceType, limit, offset)
+			if err == nil {
+				total, err = h.store.CountByType(resourceType)
+			}
+		} else {
+			resources, err = h.store.ListByTypeAndUploaderPaginated(resourceType, userID, limit, offset)
+			if err == nil {
+				total, err = h.store.CountByTypeAndUploader(resourceType, userID)
+			}
+		}
+	} else if userRole == "admin" {
 		resources, err = h.store.ListPaginated(limit, offset)
 		if err == nil {
 			total, err = h.store.Count()
@@ -383,7 +419,7 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 
 	// Read readme file if it exists.
 	readmeContent := ""
-	readmePath := storage.ReadmePath(h.dataDir, resource.ID)
+	readmePath := storage.ReadmePath(h.dataDir, resource.ResourceType, resource.ID)
 	if data, err := os.ReadFile(readmePath); err == nil {
 		readmeContent = string(data)
 	}
@@ -395,6 +431,7 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		"filename":         resource.Filename,
 		"file_size":        resource.FileSize,
 		"content_type":     resource.ContentType,
+		"resource_type":    resource.ResourceType,
 		"views":            resource.Views,
 		"banned":           resource.Banned,
 		"transcode_status": resource.TranscodeStatus,
@@ -427,9 +464,9 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Path traversal prevention.
-	hashDir := filepath.Clean(storage.HashPath(h.dataDir, id))
-	videoBase := filepath.Clean(filepath.Join(h.dataDir, "video"))
-	if !strings.HasPrefix(hashDir, videoBase) {
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, resource.ResourceType, resource.ID))
+	typeBase := filepath.Clean(filepath.Join(h.dataDir, resource.ResourceType))
+	if !strings.HasPrefix(hashDir, typeBase) {
 		respondError(w, r, http.StatusBadRequest, "Invalid path")
 		return
 	}
@@ -457,7 +494,7 @@ func (h *ResourceHandler) UpdateReadme(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Verify resource exists.
-	_, err := h.store.GetByID(id)
+	res, err := h.store.GetByID(id)
 	if err != nil {
 		respondError(w, r, http.StatusNotFound, "Resource not found")
 		return
@@ -473,7 +510,7 @@ func (h *ResourceHandler) UpdateReadme(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write readme file.
-	readmePath := storage.ReadmePath(h.dataDir, id)
+	readmePath := storage.ReadmePath(h.dataDir, res.ResourceType, id)
 	if err := os.MkdirAll(filepath.Dir(readmePath), 0o755); err != nil {
 		slog.Error("failed to create readme directory", "error", err)
 		respondError(w, r, http.StatusInternalServerError, "Storage error")
@@ -512,6 +549,12 @@ func (h *ResourceHandler) Retranscode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only video resources support retranscoding.
+	if resource.ResourceType != storage.ResourceTypeVideo {
+		respondError(w, r, http.StatusBadRequest, "Retranscoding is only supported for video resources")
+		return
+	}
+
 	// Check if transcode is already in progress
 	if resource.TranscodeStatus == "processing" {
 		respondError(w, r, http.StatusConflict, "Transcode already in progress")
@@ -527,7 +570,7 @@ func (h *ResourceHandler) Retranscode(w http.ResponseWriter, r *http.Request) {
 
 	h.transcodeQueue.Submit(transcode.Job{
 		ResourceID: id,
-		InputPath:  storage.OriginalPath(h.dataDir, id),
+		InputPath:  storage.OriginalPath(h.dataDir, resource.ResourceType, id),
 		OutputDir:  storage.HLSPath(h.dataDir, id),
 	})
 
@@ -561,15 +604,17 @@ func (h *ResourceHandler) BanResource(w http.ResponseWriter, r *http.Request) {
 	// Delete video data from disk (original file + HLS output). Preserve readme file.
 
 	// Remove original video file
-	originalPath := storage.OriginalPath(h.dataDir, id)
+	originalPath := storage.OriginalPath(h.dataDir, resource.ResourceType, resource.ID)
 	if err := os.Remove(originalPath); err != nil && !os.IsNotExist(err) {
 		slog.Error("failed to remove original file during ban", "id", id, "error", err)
 	}
 
-	// Remove HLS output
-	hlsDir := storage.HLSPath(h.dataDir, id)
-	if err := os.RemoveAll(hlsDir); err != nil && !os.IsNotExist(err) {
-		slog.Error("failed to remove HLS dir during ban", "id", id, "error", err)
+	// Remove HLS output (video only)
+	if resource.ResourceType == storage.ResourceTypeVideo {
+		hlsDir := storage.HLSPath(h.dataDir, resource.ID)
+		if err := os.RemoveAll(hlsDir); err != nil && !os.IsNotExist(err) {
+			slog.Error("failed to remove HLS dir during ban", "id", id, "error", err)
+		}
 	}
 
 	// Set banned flag in DB (preserves metadata + readme on disk)

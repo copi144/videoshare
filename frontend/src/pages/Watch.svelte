@@ -11,6 +11,7 @@
     title: string;
     readme?: string;
     content_type: string;
+    resource_type?: string;
     file_size: number;
     views: number;
     created_at: string;
@@ -39,23 +40,26 @@
   // Initialize HLS or native playback when resource and video element are ready
   $: if (resource && videoRef) {
     const videoId = id;
-    // Clean up previous HLS instance if any
-    if (hlsInstance) {
-      hlsInstance.destroy();
-      hlsInstance = null;
-    }
-    if (resource.transcode_status === 'done') {
-      if (Hls.isSupported()) {
-        hlsInstance = new Hls();
-        hlsInstance.loadSource(`/v/${videoId}/hls/master.m3u8`);
-        hlsInstance.attachMedia(videoRef);
-      } else if (videoRef.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS support (Safari)
-        videoRef.src = `/v/${videoId}/hls/master.m3u8`;
+    const rtype = resource.resource_type || 'video';
+    if (rtype === 'video') {
+      // Clean up previous HLS instance if any
+      if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
       }
-    } else {
-      // Fall back to original file
-      videoRef.src = `/v/${videoId}`;
+      if (resource.transcode_status === 'done') {
+        if (Hls.isSupported()) {
+          hlsInstance = new Hls();
+          hlsInstance.loadSource(`/v/${videoId}/hls/master.m3u8`);
+          hlsInstance.attachMedia(videoRef);
+        } else if (videoRef.canPlayType('application/vnd.apple.mpegurl')) {
+          // Native HLS support (Safari)
+          videoRef.src = `/v/${videoId}/hls/master.m3u8`;
+        }
+      } else {
+        // Fall back to original file
+        videoRef.src = `/v/${videoId}`;
+      }
     }
   }
 
@@ -91,12 +95,25 @@
   <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">This video has been banned.</div>
 {:else if resource}
   <h2>{resource.title}</h2>
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
-    <video controls bind:this={videoRef} style="width: 100%; max-height: 80vh;">
-      <track kind="captions" label="No captions available" />
-      Your browser does not support the video tag.
-    </video>
-  </div>
+  {#if resource.resource_type === 'audio'}
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
+      <audio controls class="w-full" bind:this={videoRef}>
+        <source src="/a/{resource.id}" type={resource.content_type} />
+        Your browser does not support the audio element.
+      </audio>
+    </div>
+  {:else if resource.resource_type === 'image'}
+    <div class="rounded-lg border border-gray-200 bg-white p-4" style="text-align: center;">
+      <img src="/i/{resource.id}" alt={resource.title} style="max-width: 100%; max-height: 80vh;" />
+    </div>
+  {:else}
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
+      <video controls bind:this={videoRef} style="width: 100%; max-height: 80vh;">
+        <track kind="captions" label="No captions available" />
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  {/if}
   {#if resource.readme}
     <div class="rounded-lg border border-gray-200 bg-white p-4">
       <pre style="white-space: pre-wrap; margin: 0; font-family: inherit;">{resource.readme}</pre>
@@ -105,5 +122,11 @@
     <p class="text-gray-400 italic">No description</p>
   {/if}
   <p>Views: {resource.views} | Size: {formatSize(resource.file_size)} | Uploaded by: {resource.uploaded_username}</p>
-  <a href="/v/{resource.id}/download" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 no-underline">Download Original</a>
+  {#if resource.resource_type === 'audio'}
+    <a href="/a/{resource.id}" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 no-underline">Download Original</a>
+  {:else if resource.resource_type === 'image'}
+    <a href="/i/{resource.id}" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 no-underline">Download Original</a>
+  {:else}
+    <a href="/v/{resource.id}/download" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 no-underline">Download Original</a>
+  {/if}
 {/if}

@@ -5,6 +5,7 @@ CREATE TABLE resources (
     filename TEXT NOT NULL DEFAULT '',
     file_size INTEGER NOT NULL DEFAULT 0,
     content_type TEXT NOT NULL DEFAULT 'video/mp4',
+    resource_type TEXT NOT NULL DEFAULT 'video',
     views INTEGER NOT NULL DEFAULT 0,
     uploaded_by TEXT,
     category_id TEXT,
@@ -46,6 +47,7 @@ CREATE TABLE category_uploaders (
 CREATE TABLE playlists (
     id TEXT PRIMARY KEY,
     category_id TEXT NOT NULL REFERENCES categories(id),
+    playlist_type TEXT NOT NULL DEFAULT 'video',
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL REFERENCES users(id),

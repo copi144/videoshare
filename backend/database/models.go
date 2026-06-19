@@ -23,13 +23,14 @@ type CategoryUploader struct {
 }
 
 type Playlist struct {
-	ID          string
-	CategoryID  string
-	Name        string
-	Description string
-	CreatedBy   string
-	SortOrder   int64
-	CreatedAt   time.Time
+	ID           string
+	CategoryID   string
+	PlaylistType string
+	Name         string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
 }
 
 type PlaylistVideo struct {
@@ -45,6 +46,7 @@ type Resource struct {
 	Filename        string
 	FileSize        int64
 	ContentType     string
+	ResourceType    string
 	Views           int64
 	UploadedBy      sql.NullString
 	CategoryID      sql.NullString

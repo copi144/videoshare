@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"videoshare/model"
+	"videoshare/storage"
 	"videoshare/upload"
 )
 
@@ -75,11 +77,17 @@ func (q *Queue) worker(id int) {
 	}
 }
 
-// processJob runs the actual FFmpeg command with status tracking.
+// processJob dispatches processing based on resource type.
 func (q *Queue) processJob(job Job) {
+	// Look up the resource to determine its type and transcode opt-out.
+	resource, err := q.store.GetByID(job.ResourceID)
+	if err != nil {
+		slog.Error("failed to lookup resource for transcode", "resource_id", job.ResourceID, "error", err)
+		return
+	}
+
 	// Check if transcode was opted-out.
-	resource, checkErr := q.store.GetByID(job.ResourceID)
-	if checkErr == nil && resource.NoTranscode {
+	if resource.NoTranscode {
 		slog.Info("transcode skipped (no_transcode flag)", "resource_id", job.ResourceID)
 		return
 	}
@@ -90,6 +98,23 @@ func (q *Queue) processJob(job Job) {
 		return
 	}
 
+	switch resource.ResourceType {
+	case storage.ResourceTypeVideo:
+		q.processVideoJob(job)
+	case storage.ResourceTypeAudio:
+		q.processAudioJob(job)
+	case storage.ResourceTypeImage:
+		q.processImageJob(job)
+	default:
+		slog.Warn("unknown resource type, skipping transcode", "resource_id", job.ResourceID, "type", resource.ResourceType)
+		if err := q.store.UpdateTranscodeStatus(job.ResourceID, "done"); err != nil {
+			slog.Error("failed to mark transcode done", "resource_id", job.ResourceID, "error", err)
+		}
+	}
+}
+
+// processVideoJob runs HLS transcoding (existing logic).
+func (q *Queue) processVideoJob(job Job) {
 	// Probe input video dimensions to filter quality ladder.
 	dims, probeErr := upload.ProbeVideoDimensions(upload.FFprobePath(q.cfg.FFmpegPath), job.InputPath)
 	var qualities []Quality
@@ -134,6 +159,48 @@ func (q *Queue) processJob(job Job) {
 	if err := q.store.UpdateTranscodeStatus(job.ResourceID, "done"); err != nil {
 		slog.Error("failed to update transcode status", "resource_id", job.ResourceID, "error", err)
 	}
+}
+
+func (q *Queue) processAudioJob(job Job) {
+	hashDir := filepath.Dir(job.InputPath)
+	outputPath := filepath.Join(hashDir, "transcoded", "output.mp3")
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		slog.Error("failed to create audio output dir", "resource_id", job.ResourceID, "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(q.ctx, 10*time.Minute)
+	defer cancel()
+	cmd := BuildAudioCommand(q.cfg, job.InputPath, outputPath)
+	cmdWithCtx := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	output, err := cmdWithCtx.CombinedOutput()
+	if err != nil {
+		slog.Error("audio transcode failed", "resource_id", job.ResourceID, "error", err, "output", string(output))
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
+		return
+	}
+	slog.Info("audio transcode completed", "resource_id", job.ResourceID)
+	q.store.UpdateTranscodeStatus(job.ResourceID, "done")
+}
+
+func (q *Queue) processImageJob(job Job) {
+	hashDir := filepath.Dir(job.InputPath)
+	outputPath := filepath.Join(hashDir, "thumb")
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		slog.Error("failed to create image output dir", "resource_id", job.ResourceID, "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(q.ctx, 30*time.Second)
+	defer cancel()
+	cmd := BuildThumbnailCommand(q.cfg, job.InputPath, outputPath, 800)
+	cmdWithCtx := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	output, err := cmdWithCtx.CombinedOutput()
+	if err != nil {
+		slog.Error("image thumbnail failed", "resource_id", job.ResourceID, "error", err, "output", string(output))
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
+		return
+	}
+	slog.Info("image thumbnail completed", "resource_id", job.ResourceID)
+	q.store.UpdateTranscodeStatus(job.ResourceID, "done")
 }
 
 // Shutdown gracefully stops all workers.

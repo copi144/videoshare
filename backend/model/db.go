@@ -136,7 +136,7 @@ func migrate(db *sql.DB) error {
 	}
 
 	// Add new columns to resources table (idempotent — errors are expected if columns exist)
-	columns := []string{"uploaded_by", "category_id", "transcode_status", "banned", "no_transcode"}
+	columns := []string{"uploaded_by", "category_id", "transcode_status", "banned", "no_transcode", "resource_type"}
 	for _, col := range columns {
 		var def string
 		switch col {
@@ -146,6 +146,8 @@ func migrate(db *sql.DB) error {
 			def = "INTEGER NOT NULL DEFAULT 0"
 		case "transcode_status":
 			def = "TEXT NOT NULL DEFAULT 'none'"
+		case "resource_type":
+			def = "TEXT NOT NULL DEFAULT 'video'"
 		case "category_id":
 			def = "TEXT REFERENCES categories(id)"
 		default:
@@ -209,6 +211,11 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
+	// Add playlist_type to playlists table (idempotent)
+	if _, err := db.Exec("ALTER TABLE playlists ADD COLUMN playlist_type TEXT NOT NULL DEFAULT 'video'"); err != nil {
+		slog.Debug("playlist_type column may already exist", "error", err)
+	}
+
 	// Explicit performance indexes (added for pagination and list queries; idempotent)
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_created_at ON resources(created_at)"); err != nil {
 		return fmt.Errorf("create resources created_at index: %w", err)
@@ -242,6 +249,12 @@ func migrate(db *sql.DB) error {
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_api_tokens_created_at ON api_tokens(created_at)"); err != nil {
 		return fmt.Errorf("create api_tokens created_at index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_resource_type ON resources(resource_type)"); err != nil {
+		return fmt.Errorf("create resources resource_type index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_playlist_type ON playlists(playlist_type)"); err != nil {
+		return fmt.Errorf("create playlists playlist_type index: %w", err)
 	}
 
 	return nil

@@ -77,6 +77,7 @@ export interface Resource {
   filename: string;
   file_size: number;
   content_type: string;
+  resource_type?: string;
   views: number;
   banned?: boolean;
   created_at: string;
@@ -92,7 +93,7 @@ export interface ResourceDetail extends Resource {
 }
 
 // Resources
-export const listResources = (params?: {limit?: number; offset?: number; category_id?: string; playlist_id?: string}) => {
+export const listResources = (params?: {limit?: number; offset?: number; category_id?: string; playlist_id?: string; resource_type?: string}) => {
   let path = '/api/resources';
   if (params) {
     const qs = new URLSearchParams();
@@ -100,6 +101,7 @@ export const listResources = (params?: {limit?: number; offset?: number; categor
     if (params.offset !== undefined) qs.set('offset', String(params.offset));
     if (params.category_id !== undefined) qs.set('category_id', params.category_id);
     if (params.playlist_id !== undefined) qs.set('playlist_id', params.playlist_id);
+    if (params.resource_type !== undefined) qs.set('resource_type', params.resource_type);
     const query = qs.toString();
     if (query) path += `?${query}`;
   }
@@ -150,21 +152,22 @@ export const assignUploaders = (categoryId: string, userIds: string[]) =>
   request<{ok: boolean; redirect?: string}>('POST', `/api/categories/${categoryId}/uploaders`, { user_ids: userIds });
 
 // Playlists
-export const listPlaylists = (params?: {limit?: number; offset?: number; category_id?: string}) => {
+export const listPlaylists = (params?: {limit?: number; offset?: number; category_id?: string; playlist_type?: string}) => {
   let path = '/api/playlists';
   if (params) {
     const qs = new URLSearchParams();
     if (params.limit !== undefined) qs.set('limit', String(params.limit));
     if (params.offset !== undefined) qs.set('offset', String(params.offset));
     if (params.category_id !== undefined) qs.set('category_id', params.category_id);
+    if (params.playlist_type !== undefined) qs.set('playlist_type', params.playlist_type);
     const query = qs.toString();
     if (query) path += `?${query}`;
   }
   return request<{playlists: any[]; total: number; limit: number; offset: number}>('GET', path);
 };
 
-export const createPlaylist = (name: string, description: string, categoryId: string) =>
-  request<{ok: boolean; redirect?: string}>('POST', '/api/playlists', { name, description, category_id: categoryId });
+export const createPlaylist = (name: string, description: string, categoryId: string, playlistType?: string) =>
+  request<{ok: boolean; redirect?: string}>('POST', '/api/playlists', { name, description, category_id: categoryId, playlist_type: playlistType });
 
 export const deletePlaylist = (id: string) =>
   request<{ok: boolean}>('DELETE', `/api/playlists/${id}`);

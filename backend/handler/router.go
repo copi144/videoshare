@@ -122,6 +122,10 @@ func NewRouter(sm *scs.SessionManager,
 	// Download — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}/download", streamH.ServeDownload)
 
+	// Audio/Image streaming — accessible by both system users and share-link viewers
+	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/a/{id}", streamH.ServeAudio)
+	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/i/{id}", streamH.ServeImage)
+
 	// Resource detail — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/resources/{id}", resourceH.GetResourceAPI)
 

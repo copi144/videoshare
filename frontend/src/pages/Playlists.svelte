@@ -24,6 +24,7 @@
   let formName = '';
   let formDescription = '';
   let formCategoryId = '';
+  let formPlaylistType: 'video' | 'audio' | 'image' = 'video';
   let success: string | null = null;
   let loading = true;
 
@@ -71,12 +72,13 @@
     }
 
     try {
-      const result = await createPlaylist(formName.trim(), formDescription.trim(), formCategoryId);
+      const result = await createPlaylist(formName.trim(), formDescription.trim(), formCategoryId, formPlaylistType);
       if (result.ok) {
         success = `Playlist "${formName.trim()}" created successfully.`;
         formName = '';
         formDescription = '';
         formCategoryId = '';
+        formPlaylistType = 'video';
         await loadData();
       }
     } catch (e: unknown) {
@@ -110,6 +112,14 @@
             {cat.name}{cat.id === 'global' ? ' (public)' : ''}
           </option>
         {/each}
+      </select>
+    </label>
+    <label for="playlist_type">
+      Type
+      <select id="playlist_type" name="playlist_type" bind:value={formPlaylistType}>
+        <option value="video">Video</option>
+        <option value="audio">Audio</option>
+        <option value="image">Image</option>
       </select>
     </label>
     <button type="submit">Create</button>

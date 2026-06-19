@@ -111,6 +111,30 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 	return exec.Command(cfg.FFmpegPath, args...)
 }
 
+// BuildAudioCommand generates an FFmpeg command for audio downsampling.
+func BuildAudioCommand(cfg *TranscodeConfig, inputPath, outputPath string) *exec.Cmd {
+	return exec.Command(cfg.FFmpegPath,
+		"-i", inputPath,
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-ar", "44100",
+		"-ac", "2",
+		"-y",
+		outputPath,
+	)
+}
+
+// BuildThumbnailCommand generates an FFmpeg command to create a thumbnail.
+// maxDimension defines the maximum width or height.
+func BuildThumbnailCommand(cfg *TranscodeConfig, inputPath, outputPath string, maxDimension int) *exec.Cmd {
+	return exec.Command(cfg.FFmpegPath,
+		"-i", inputPath,
+		"-vf", fmt.Sprintf("scale='min(%d,iw)':'min(%d,ih)':force_original_aspect_ratio=decrease", maxDimension, maxDimension),
+		"-y",
+		outputPath,
+	)
+}
+
 // RenameHLSOutputs renames FFmpeg's numbered HLS output directories (0, 1, 2) to resolution names (360p, 720p, 1080p)
 // and updates the master playlist references accordingly.
 // Each variant's playlist is now inside its directory as "playlist.m3u8", so segment references are relative and correct.
