@@ -510,8 +510,7 @@ func (h *ResourceHandler) BanResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete video data from disk (original file + HLS output + readme).
-	// Preserve the DB record.
+	// Delete video data from disk (original file + HLS output). Preserve readme file.
 
 	// Remove original video file
 	originalPath := storage.OriginalPath(h.dataDir, id)
@@ -523,12 +522,6 @@ func (h *ResourceHandler) BanResource(w http.ResponseWriter, r *http.Request) {
 	hlsDir := storage.HLSPath(h.dataDir, id)
 	if err := os.RemoveAll(hlsDir); err != nil && !os.IsNotExist(err) {
 		slog.Error("failed to remove HLS dir during ban", "id", id, "error", err)
-	}
-
-	// Remove readme file
-	readmePath := storage.ReadmePath(h.dataDir, id)
-	if err := os.Remove(readmePath); err != nil && !os.IsNotExist(err) {
-		slog.Error("failed to remove readme during ban", "id", id, "error", err)
 	}
 
 	// Set banned flag in DB (preserves metadata + readme on disk)
