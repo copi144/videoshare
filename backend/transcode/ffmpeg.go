@@ -112,7 +112,7 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 }
 
 // RenameHLSOutputs renames FFmpeg's numbered HLS outputs (0, 1, 2) to resolution names (360p, 720p, 1080p)
-// and updates the master playlist references accordingly.
+// and updates the variant and master playlist references accordingly.
 func RenameHLSOutputs(outputDir string, qualities []Quality) error {
 	for i, q := range qualities {
 		// Rename playlist: 0.m3u8 → 360p.m3u8
@@ -127,6 +127,22 @@ func RenameHLSOutputs(outputDir string, qualities []Quality) error {
 		newDir := filepath.Join(outputDir, q.Name)
 		if err := os.Rename(oldDir, newDir); err != nil {
 			return fmt.Errorf("rename segment dir %s -> %s: %w", oldDir, newDir, err)
+		}
+	}
+
+	// Update variant playlist segment references (e.g., "0/0000.ts" → "360p/0000.ts")
+	for i, q := range qualities {
+		playlistPath := filepath.Join(outputDir, fmt.Sprintf("%s.m3u8", q.Name))
+		data, err := os.ReadFile(playlistPath)
+		if err != nil {
+			return fmt.Errorf("read variant playlist %s: %w", playlistPath, err)
+		}
+		// Replace the old numbered directory prefix in segment paths
+		oldPrefix := fmt.Sprintf("%d/", i)
+		newPrefix := fmt.Sprintf("%s/", q.Name)
+		data = bytes.ReplaceAll(data, []byte(oldPrefix), []byte(newPrefix))
+		if err := os.WriteFile(playlistPath, data, 0644); err != nil {
+			return fmt.Errorf("write variant playlist %s: %w", playlistPath, err)
 		}
 	}
 

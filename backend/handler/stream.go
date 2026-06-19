@@ -13,7 +13,7 @@ import (
 )
 
 // ServeHLS serves HLS playlist and segment files.
-// GET /api/video/{id}/hls/{path}
+// GET /v/{id}/hls/{path}
 func (h *StreamHandler) ServeHLS(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -69,7 +69,7 @@ func NewStreamHandler(store *model.ResourceStore, dataDir string) *StreamHandler
 }
 
 // ServeVideo streams a video file with HTTP range request support.
-// GET /api/video/{id}
+// GET /v/{id}
 func (h *StreamHandler) ServeVideo(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 

@@ -47,15 +47,15 @@
     if (resource.transcode_status === 'done') {
       if (Hls.isSupported()) {
         hlsInstance = new Hls();
-        hlsInstance.loadSource(`/api/video/${videoId}/hls/master.m3u8`);
+        hlsInstance.loadSource(`/v/${videoId}/hls/master.m3u8`);
         hlsInstance.attachMedia(videoRef);
       } else if (videoRef.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS support (Safari)
-        videoRef.src = `/api/video/${videoId}/hls/master.m3u8`;
+        videoRef.src = `/v/${videoId}/hls/master.m3u8`;
       }
     } else {
       // Fall back to original file
-      videoRef.src = `/api/video/${videoId}`;
+      videoRef.src = `/v/${videoId}`;
     }
   }
 
