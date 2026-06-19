@@ -10,14 +10,13 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/mdp/qrterminal/v3"
 
-	"videoshare/internal/config"
-	"videoshare/internal/handler"
-	"videoshare/internal/model"
-	"videoshare/internal/transcode"
+	"videoshare/handler"
+	"videoshare/model"
+	"videoshare/transcode"
 )
 
 func main() {
-	cfg := config.Load()
+	cfg := Load()
 
 	// Initialize structured JSON logging.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{

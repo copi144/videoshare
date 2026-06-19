@@ -9,8 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"videoshare/internal/middleware"
-	"videoshare/internal/model"
+	"videoshare/middleware"
+	"videoshare/model"
 )
 
 // PlaylistHandler handles playlist management (admin only).

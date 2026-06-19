@@ -10,10 +10,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"videoshare/internal/middleware"
-	"videoshare/internal/model"
-	"videoshare/internal/transcode"
-	"videoshare/internal/web"
+	"videoshare/middleware"
+	"videoshare/model"
+	"videoshare/transcode"
+	"videoshare/web"
 )
 
 // NewRouter creates and configures the chi router with all route groups.

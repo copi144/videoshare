@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"videoshare/internal/model"
-	"videoshare/internal/storage"
+	"videoshare/model"
+	"videoshare/storage"
 )
 
 // ServeHLS serves HLS playlist and segment files.

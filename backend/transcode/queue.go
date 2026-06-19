@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"videoshare/internal/model"
+	"videoshare/model"
 )
 
 // Job represents a transcoding job.

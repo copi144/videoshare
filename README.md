@@ -29,7 +29,7 @@ categories, and playlists — written in Go.
 ```bash
 git clone <repo-url>
 cd videoshare
-CGO_ENABLED=0 go build -o videoserver ./cmd/server
+cd backend && CGO_ENABLED=0 go build -o ../videoserver ./cmd/server
 ./videoserver
 ```
 

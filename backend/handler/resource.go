@@ -15,11 +15,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"lukechampine.com/blake3"
 
-	"videoshare/internal/middleware"
-	"videoshare/internal/model"
-	"videoshare/internal/storage"
-	"videoshare/internal/transcode"
-	"videoshare/internal/upload"
+	"videoshare/middleware"
+	"videoshare/model"
+	"videoshare/storage"
+	"videoshare/transcode"
+	"videoshare/upload"
 )
 
 // ResourceHandler handles CRUD operations for video resources.

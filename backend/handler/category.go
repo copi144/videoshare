@@ -7,8 +7,8 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
-	"videoshare/internal/middleware"
-	"videoshare/internal/model"
+	"videoshare/middleware"
+	"videoshare/model"
 )
 
 // CategoryHandler handles category management (admin only).

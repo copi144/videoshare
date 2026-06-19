@@ -11,8 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"videoshare/internal/middleware"
-	"videoshare/internal/model"
+	"videoshare/middleware"
+	"videoshare/model"
 )
 
 // AuthHandler handles password-based authentication for shared videos.

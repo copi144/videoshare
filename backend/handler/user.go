@@ -14,8 +14,8 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/pquerna/otp/totp"
 
-	"videoshare/internal/middleware"
-	"videoshare/internal/model"
+	"videoshare/middleware"
+	"videoshare/model"
 )
 
 // UserHandler handles system user authentication (login/logout) for the admin area.
