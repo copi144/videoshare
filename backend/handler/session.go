@@ -139,6 +139,15 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		// Public/global category — auto-auth
 		middleware.SetVideoAuth(r.Context(), h.sm)
 		slog.Info("resource auto-authenticated via /api/session", "id", req.ResourceID)
+
+		// If request has a Bearer token from a logged-in user, bind user data to session too
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			tok := strings.TrimPrefix(auth, "Bearer ")
+			if apiToken, err := model.GetAPIToken(h.db, tok); err == nil {
+				middleware.SetUserSession(r.Context(), h.sm, apiToken.UserID, apiToken.UserRole, apiToken.Username)
+			}
+		}
+
 		respondJSONOK(w, map[string]interface{}{
 			"ok":       true,
 			"redirect": "/#/v/" + req.ResourceID + "/watch",
@@ -158,6 +167,15 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 
 	middleware.SetVideoAuth(r.Context(), h.sm)
 	slog.Info("resource authenticated via /api/session", "id", req.ResourceID)
+
+	// If request has a Bearer token from a logged-in user, bind user data to session too
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+		tok := strings.TrimPrefix(auth, "Bearer ")
+		if apiToken, err := model.GetAPIToken(h.db, tok); err == nil {
+			middleware.SetUserSession(r.Context(), h.sm, apiToken.UserID, apiToken.UserRole, apiToken.Username)
+		}
+	}
+
 	respondJSONOK(w, map[string]interface{}{
 		"ok":       true,
 		"redirect": "/#/v/" + req.ResourceID + "/watch",

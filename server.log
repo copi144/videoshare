@@ -25,3 +25,81 @@
 2026/06/20 02:51:55 "GET http://127.0.0.1:8080/api/playlists?category_id=global&playlist_type=all HTTP/1.1" from 127.0.0.1:39082 - 200 59B in 170.289µs
 2026/06/20 02:51:55 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:39082 - 200 659180B in 2.436241ms
 2026/06/20 02:56:55 "POST http://127.0.0.1:8080/api/heartbeat HTTP/1.1" from 127.0.0.1:57126 - 200 12B in 277.159µs
+{"time":"2026-06-20T02:57:30.527329102+08:00","level":"INFO","msg":"shutdown signal received"}
+{"time":"2026-06-20T02:57:30.527605901+08:00","level":"INFO","msg":"transcode queue shut down"}
+{"time":"2026-06-20T02:57:30.529316744+08:00","level":"INFO","msg":"shutdown complete"}
+{"time":"2026-06-20T03:05:04.781754345+08:00","level":"ERROR","msg":"failed to open database","error":"create data directory: mkdir ./data: permission denied"}
+{"time":"2026-06-20T03:05:14.813009743+08:00","level":"INFO","msg":"transcode worker started","worker_id":0}
+{"time":"2026-06-20T03:05:14.813053613+08:00","level":"INFO","msg":"starting server","addr":":8080"}
+2026/06/20 03:05:48 "GET http://127.0.0.1:8080/ HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 717.145µs
+2026/06/20 03:05:48 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:36176 - 200 89B in 376.217µs
+2026/06/20 03:05:48 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:36176 - 200 428B in 260.428µs
+{"time":"2026-06-20T03:05:48.855342113+08:00","level":"INFO","msg":"resource auto-authenticated via /api/session","id":"855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3"}
+2026/06/20 03:05:48 "POST http://127.0.0.1:8080/api/session HTTP/1.1" from 127.0.0.1:36176 - 200 101B in 1.070142ms
+2026/06/20 03:05:48 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 637.845µs
+2026/06/20 03:05:48 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:36176 - 200 428B in 291.628µs
+2026/06/20 03:05:48 "GET http://127.0.0.1:8080/v/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3/hls/master.m3u8 HTTP/1.1" from 127.0.0.1:36176 - 303 33B in 244.468µs
+2026/06/20 03:05:48 "GET http://127.0.0.1:8080/login HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 882.503µs
+2026/06/20 03:05:53 "GET http://127.0.0.1:8080/ HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 2.563971ms
+2026/06/20 03:05:53 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:36176 - 200 89B in 226.468µs
+2026/06/20 03:05:53 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 391.937µs
+2026/06/20 03:05:53 "POST http://127.0.0.1:8080/api/heartbeat HTTP/1.1" from 127.0.0.1:36176 - 200 12B in 232.839µs
+2026/06/20 03:05:53 "GET http://127.0.0.1:8080/api/resources?limit=50&offset=0&category_id=global HTTP/1.1" from 127.0.0.1:36176 - 200 485B in 407.257µs
+2026/06/20 03:05:53 "GET http://127.0.0.1:8080/api/categories HTTP/1.1" from 127.0.0.1:36176 - 200 201B in 212.908µs
+2026/06/20 03:05:53 "GET http://127.0.0.1:8080/api/playlists?category_id=global&playlist_type=all HTTP/1.1" from 127.0.0.1:36176 - 200 59B in 351.058µs
+2026/06/20 03:05:58 "GET http://127.0.0.1:8080/api/categories?limit=50&offset=0 HTTP/1.1" from 127.0.0.1:36176 - 200 201B in 280.378µs
+2026/06/20 03:05:58 "GET http://127.0.0.1:8080/api/categories HTTP/1.1" from 127.0.0.1:36176 - 200 201B in 291.597µs
+2026/06/20 03:05:58 "GET http://127.0.0.1:8080/api/playlists?limit=50&offset=0 HTTP/1.1" from 127.0.0.1:36176 - 200 59B in 318.458µs
+2026/06/20 03:06:02 "GET http://127.0.0.1:8080/api/categories?limit=50&offset=0 HTTP/1.1" from 127.0.0.1:36176 - 200 201B in 249.278µs
+2026/06/20 03:06:02 "GET http://127.0.0.1:8080/api/categories HTTP/1.1" from 127.0.0.1:36176 - 200 201B in 262.658µs
+2026/06/20 03:06:02 "GET http://127.0.0.1:8080/api/playlists?limit=50&offset=0 HTTP/1.1" from 127.0.0.1:36176 - 200 59B in 223.528µs
+2026/06/20 03:06:03 "GET http://127.0.0.1:8080/api/categories?limit=50&offset=0 HTTP/1.1" from 127.0.0.1:36176 - 200 201B in 374.627µs
+2026/06/20 03:06:12 "GET http://127.0.0.1:8080/ HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 687.285µs
+2026/06/20 03:06:12 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:36176 - 200 89B in 242.459µs
+2026/06/20 03:06:12 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:36176 - 200 428B in 364.778µs
+2026/06/20 03:06:12 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 362.088µs
+{"time":"2026-06-20T03:06:12.340669751+08:00","level":"INFO","msg":"resource auto-authenticated via /api/session","id":"855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3"}
+2026/06/20 03:06:12 "POST http://127.0.0.1:8080/api/session HTTP/1.1" from 127.0.0.1:36176 - 200 101B in 1.36102ms
+2026/06/20 03:06:12 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:36176 - 200 428B in 364.207µs
+2026/06/20 03:06:12 "GET http://127.0.0.1:8080/v/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3/hls/master.m3u8 HTTP/1.1" from 127.0.0.1:36176 - 303 33B in 158.599µs
+2026/06/20 03:06:12 "GET http://127.0.0.1:8080/login HTTP/1.1" from 127.0.0.1:36176 - 200 660995B in 599.705µs
+2026/06/20 03:06:50 "GET http://127.0.0.1:8080/ HTTP/1.1" from 127.0.0.1:42406 - 200 660995B in 291.968µs
+2026/06/20 03:06:50 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:42406 - 401 52B in 20.45µs
+2026/06/20 03:06:50 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:42406 - 401 52B in 10.49µs
+2026/06/20 03:06:50 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:42406 - 200 660995B in 178.139µs
+2026/06/20 03:06:54 "GET http://127.0.0.1:8080/ HTTP/1.1" from 127.0.0.1:42406 - 200 660995B in 489.097µs
+2026/06/20 03:06:54 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:42406 - 401 52B in 15.47µs
+2026/06/20 03:06:54 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:42406 - 200 660995B in 1.462079ms
+{"time":"2026-06-20T03:09:35.030131706+08:00","level":"INFO","msg":"user logged in via /api/session","username":"admin"}
+2026/06/20 03:09:35 "POST http://127.0.0.1:8080/api/session HTTP/1.1" from 127.0.0.1:40420 - 200 147B in 1.719829ms
+2026/06/20 03:09:35 "POST http://127.0.0.1:8080/api/heartbeat HTTP/1.1" from 127.0.0.1:40420 - 200 12B in 248.308µs
+2026/06/20 03:09:35 "GET http://127.0.0.1:8080/api/resources?limit=50&offset=0&category_id=global HTTP/1.1" from 127.0.0.1:40420 - 200 485B in 368.108µs
+2026/06/20 03:09:35 "GET http://127.0.0.1:8080/api/categories HTTP/1.1" from 127.0.0.1:40420 - 200 201B in 188.489µs
+2026/06/20 03:09:35 "GET http://127.0.0.1:8080/api/playlists?category_id=global&playlist_type=all HTTP/1.1" from 127.0.0.1:40420 - 200 59B in 266.429µs
+2026/06/20 03:09:43 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:40420 - 200 660995B in 582.766µs
+2026/06/20 03:09:44 "GET http://127.0.0.1:8080/ HTTP/1.1" from 127.0.0.1:40420 - 200 660995B in 612.357µs
+2026/06/20 03:09:44 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:40420 - 200 89B in 257.408µs
+2026/06/20 03:09:44 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:40420 - 200 428B in 371.987µs
+2026/06/20 03:09:44 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:40420 - 200 660995B in 564.146µs
+{"time":"2026-06-20T03:09:44.692922101+08:00","level":"INFO","msg":"resource auto-authenticated via /api/session","id":"855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3"}
+2026/06/20 03:09:44 "POST http://127.0.0.1:8080/api/session HTTP/1.1" from 127.0.0.1:40420 - 200 101B in 1.57342ms
+2026/06/20 03:09:44 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:40420 - 200 428B in 305.978µs
+2026/06/20 03:09:44 "GET http://127.0.0.1:8080/v/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3/hls/master.m3u8 HTTP/1.1" from 127.0.0.1:40420 - 303 33B in 162.589µs
+2026/06/20 03:09:44 "GET http://127.0.0.1:8080/login HTTP/1.1" from 127.0.0.1:40420 - 200 660995B in 2.528764ms
+2026/06/20 03:13:31 "GET http://127.0.0.1:8080/v/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3/download HTTP/1.1" from 127.0.0.1:42038 - 303 33B in 217.989µs
+2026/06/20 03:13:31 "GET http://127.0.0.1:8080/login HTTP/1.1" from 127.0.0.1:42038 - 200 660995B in 354.828µs
+2026/06/20 03:13:31 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:42038 - 200 89B in 274.429µs
+2026/06/20 03:13:31 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:42038 - 200 660995B in 671.597µs
+2026/06/20 03:13:31 "POST http://127.0.0.1:8080/api/heartbeat HTTP/1.1" from 127.0.0.1:42038 - 200 12B in 198.589µs
+2026/06/20 03:13:31 "GET http://127.0.0.1:8080/api/resources?limit=50&offset=0&category_id=global HTTP/1.1" from 127.0.0.1:42038 - 200 485B in 498.877µs
+2026/06/20 03:13:31 "GET http://127.0.0.1:8080/api/categories HTTP/1.1" from 127.0.0.1:56264 - 200 201B in 211.329µs
+2026/06/20 03:13:31 "GET http://127.0.0.1:8080/api/playlists?category_id=global&playlist_type=all HTTP/1.1" from 127.0.0.1:56264 - 200 59B in 167.669µs
+2026/06/20 03:13:33 "GET http://127.0.0.1:8080/ HTTP/1.1" from 127.0.0.1:42038 - 200 660995B in 776.195µs
+2026/06/20 03:13:33 "GET http://127.0.0.1:8080/api/me HTTP/1.1" from 127.0.0.1:56264 - 200 89B in 179.939µs
+2026/06/20 03:13:33 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:56270 - 200 428B in 237.749µs
+2026/06/20 03:13:33 "GET http://127.0.0.1:8080/favicon.ico HTTP/1.1" from 127.0.0.1:56270 - 200 660995B in 685.276µs
+{"time":"2026-06-20T03:13:33.328225559+08:00","level":"INFO","msg":"resource auto-authenticated via /api/session","id":"855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3"}
+2026/06/20 03:13:33 "POST http://127.0.0.1:8080/api/session HTTP/1.1" from 127.0.0.1:56270 - 200 101B in 1.111634ms
+2026/06/20 03:13:33 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:56270 - 200 428B in 310.848µs
+2026/06/20 03:13:33 "GET http://127.0.0.1:8080/v/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3/hls/master.m3u8 HTTP/1.1" from 127.0.0.1:56270 - 303 33B in 198.958µs
+2026/06/20 03:13:33 "GET http://127.0.0.1:8080/login HTTP/1.1" from 127.0.0.1:56270 - 200 660995B in 366.578µs
