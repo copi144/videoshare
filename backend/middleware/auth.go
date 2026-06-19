@@ -82,6 +82,25 @@ func ClearUserSession(ctx context.Context, sm *scs.SessionManager) {
 	sm.Remove(ctx, sessionUsernameKey)
 }
 
+// GetUserIDFromContext returns the user ID from the context alone, without
+// needing a session manager. This is safe when the caller knows that APIAuth
+// or similar middleware has already populated the context.
+func GetUserIDFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(ctxUserID).(string); ok && id != "" {
+		return id
+	}
+	return ""
+}
+
+// GetUserRoleFromContext returns the user role from the context alone, without
+// needing a session manager.
+func GetUserRoleFromContext(ctx context.Context) string {
+	if role, ok := ctx.Value(ctxUserRole).(string); ok && role != "" {
+		return role
+	}
+	return ""
+}
+
 // GetUserID returns the authenticated user's ID, checking context first, then session.
 // Returns empty string if not set.
 func GetUserID(ctx context.Context, sm *scs.SessionManager) string {

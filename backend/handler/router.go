@@ -56,7 +56,8 @@ func NewRouter(sm *scs.SessionManager,
 	// Create handlers with dependency injection.
 	userH := NewUserHandler(userStore, sm, db)
 	authH := NewAuthHandler(resourceStore, sm)
-	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, sm, userStore, playlistStore, transcodeQueue, ffmpegPath)
+	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, userStore, playlistStore, transcodeQueue, ffmpegPath)
+	sessionH := NewSessionHandler(userStore, resourceStore, sm, db)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
 	categoryH := NewCategoryHandler(categoryStore, userStore, sm)
@@ -64,6 +65,9 @@ func NewRouter(sm *scs.SessionManager,
 	// JSON API routes that are public
 	r.Post("/api/login", userH.ServeLoginAPI)
 	r.Post("/api/s/{id}/auth", authH.AuthenticateAPI)
+
+	// Session management — create or refresh auth session
+	r.Post("/api/session", sessionH.ServeSessionAPI)
 
 	// Admin area — requires user authentication (login)
 	r.Group(func(r chi.Router) {

@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 	"lukechampine.com/blake3"
@@ -24,6 +24,8 @@ import (
 	"videoshare/upload"
 )
 
+var viewedResource sync.Map
+
 // ResourceHandler handles CRUD operations for video resources.
 type ResourceHandler struct {
 	store           *model.ResourceStore
@@ -31,15 +33,13 @@ type ResourceHandler struct {
 	playlistStore   *model.PlaylistStore
 	transcodeQueue  *transcode.Queue
 	dataDir         string
-	sm              *scs.SessionManager
 	userStore       *model.UserStore
 	ffmpegPath      string
 }
 
 // NewResourceHandler creates a new ResourceHandler with injected dependencies.
 func NewResourceHandler(store *model.ResourceStore, categoryStore *model.CategoryStore,
-	dataDir string,
-	sm *scs.SessionManager, userStore *model.UserStore, playlistStore *model.PlaylistStore,
+	dataDir string, userStore *model.UserStore, playlistStore *model.PlaylistStore,
 	transcodeQueue *transcode.Queue, ffmpegPath string) *ResourceHandler {
 	return &ResourceHandler{
 		store:          store,
@@ -47,7 +47,6 @@ func NewResourceHandler(store *model.ResourceStore, categoryStore *model.Categor
 		playlistStore:  playlistStore,
 		transcodeQueue: transcodeQueue,
 		dataDir:        dataDir,
-		sm:             sm,
 		userStore:      userStore,
 		ffmpegPath:     ffmpegPath,
 	}
@@ -75,8 +74,8 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := middleware.GetUserID(r.Context(), h.sm)
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	userID := middleware.GetUserIDFromContext(r.Context())
+	userRole := middleware.GetUserRoleFromContext(r.Context())
 
 	// Non-admin users: verify authorization for non-global categories.
 	if userRole != "admin" && model.RequiresPassword(categoryID) {
@@ -302,8 +301,8 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 // ListResourcesAPI returns all resources as JSON (for populating dropdowns).
 // GET /api/resources
 func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Request) {
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
-	userID := middleware.GetUserID(r.Context(), h.sm)
+	userRole := middleware.GetUserRoleFromContext(r.Context())
+	userID := middleware.GetUserIDFromContext(r.Context())
 
 	// Parse pagination parameters at the boundary.
 	const defaultLimit = 50
@@ -406,10 +405,8 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Per-session view guard (primary watch signal at GetResourceAPI).
-	// Uses 24h SCS session lifetime; prevents double-count on repeated fetches.
-	if !h.sm.GetBool(r.Context(), "viewed:"+id) {
-		h.sm.Put(r.Context(), "viewed:"+id, true)
+	// In-memory view guard to prevent double-count on repeated fetches.
+	if _, loaded := viewedResource.LoadOrStore(id, true); !loaded {
 		go func() {
 			if err := h.store.IncrementViews(id); err != nil {
 				slog.Error("increment views failed", "id", id, "error", err)
@@ -459,8 +456,8 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Ownership check: admin can delete anything; uploader can delete own.
-	userID := middleware.GetUserID(r.Context(), h.sm)
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	userID := middleware.GetUserIDFromContext(r.Context())
+	userRole := middleware.GetUserRoleFromContext(r.Context())
 	if userRole != "admin" && resource.UploadedBy != userID {
 		respondError(w, r, http.StatusForbidden, "You can only delete your own videos")
 		return
@@ -545,8 +542,8 @@ func (h *ResourceHandler) Retranscode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership
-	userID := middleware.GetUserID(r.Context(), h.sm)
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	userID := middleware.GetUserIDFromContext(r.Context())
+	userRole := middleware.GetUserRoleFromContext(r.Context())
 	if userRole != "admin" && resource.UploadedBy != userID {
 		respondError(w, r, http.StatusForbidden, "You can only retranscode your own videos")
 		return
@@ -587,7 +584,7 @@ func (h *ResourceHandler) BanResource(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Admin only check
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	userRole := middleware.GetUserRoleFromContext(r.Context())
 	if userRole != "admin" {
 		respondError(w, r, http.StatusForbidden, "Admin access required")
 		return

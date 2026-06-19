@@ -24,8 +24,9 @@ func APIAuth(db *sql.DB) func(http.Handler) http.Handler {
 
 			// Public API endpoints don't need API token.
 			// /api/login — public login endpoint
+			// /api/session — session creation endpoint
 			// /api/s/ — share-link authentication
-			if r.URL.Path == "/api/login" || strings.HasPrefix(r.URL.Path, "/api/s/") {
+			if r.URL.Path == "/api/login" || r.URL.Path == "/api/session" || strings.HasPrefix(r.URL.Path, "/api/s/") {
 				next.ServeHTTP(w, r)
 				return
 			}

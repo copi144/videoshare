@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { login, setApiToken } from '../lib/api';
+  import { createSession, setApiToken } from '../lib/api';
   import { apiToken } from '../stores/auth';
 
   export let onSuccess: () => void;
@@ -13,11 +13,11 @@
     error = null;
     loading = true;
     try {
-      const result = await login(username, totpCode);
+      const result = await createSession('user', { username, totp_code: totpCode });
       if (result.ok) {
-        if ((result as any).api_token) {
-          setApiToken((result as any).api_token);
-          apiToken.set((result as any).api_token);
+        if (result.api_token) {
+          setApiToken(result.api_token);
+          apiToken.set(result.api_token);
         }
         onSuccess();
       } else {

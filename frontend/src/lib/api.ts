@@ -30,7 +30,7 @@ async function request<T>(method: string, path: string, body?: any): Promise<T> 
   };
   
   // Add API token if available (not needed for login/share-auth which bootstrap it)
-  if (_apiToken && path !== '/api/login' && !path.startsWith('/api/s/')) {
+  if (_apiToken && path !== '/api/login' && path !== '/api/session' && !path.startsWith('/api/s/')) {
     (opts.headers as Record<string, string>)['Authorization'] = `Bearer ${_apiToken}`;
   }
   
@@ -128,6 +128,9 @@ export const updateReadme = (resourceId: string, readme: string) =>
 
 export const shareAuth = (id: string, password: string) =>
   request<{ok: boolean; redirect?: string}>('POST', `/api/s/${id}/auth`, { password });
+
+export const createSession = (type: 'user' | 'share' | 'token', data: Record<string, any>) =>
+  request<{ok: boolean; redirect?: string; api_token?: string; user?: {id: string; username: string; role: string}}>('POST', '/api/session', { type, ...data });
 
 // Categories
 export const listCategories = (params?: {limit?: number; offset?: number}) => {

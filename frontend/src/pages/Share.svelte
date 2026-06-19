@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { shareAuth, getResource } from '../lib/api';
+  import { createSession, getResource } from '../lib/api';
 
   export let id: string;
   export let onSuccess: (id: string) => void;
@@ -21,7 +21,7 @@
       const resource = await getResource(id);
       if (resource.category_id === 'global') {
         // Public video — auto-authenticate and redirect
-        const result = await shareAuth(id, '');
+        const result = await createSession('share', { resource_id: id, password: '' });
         if (result.ok) {
           onSuccess(id);
           return;
@@ -42,7 +42,7 @@
     error = null;
     loading = true;
     try {
-      const result = await shareAuth(id, password);
+      const result = await createSession('share', { resource_id: id, password });
       if (result.ok) {
         onSuccess(id);
       } else {
