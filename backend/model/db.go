@@ -138,10 +138,13 @@ func migrate(db *sql.DB) error {
 	// Add new columns to resources table (idempotent — errors are expected if columns exist)
 	columns := []string{"uploaded_by", "category_id", "transcode_status"}
 	for _, col := range columns {
-		def := "TEXT"
-		if col == "transcode_status" {
+		var def string
+		switch col {
+		case "transcode_status":
 			def = "TEXT NOT NULL DEFAULT 'none'"
-		} else {
+		case "category_id":
+			def = "TEXT REFERENCES categories(id)"
+		default:
 			def = "TEXT REFERENCES users(id)"
 		}
 		_, err := db.Exec(fmt.Sprintf("ALTER TABLE resources ADD COLUMN %s %s", col, def))
