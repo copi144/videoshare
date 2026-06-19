@@ -1,8 +1,11 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"time"
+
+	"videoshare/database"
 )
 
 // User represents a system user.
@@ -17,61 +20,75 @@ type User struct {
 // UserStore provides CRUD operations for users.
 type UserStore struct {
 	db *sql.DB
+	q  *database.Queries
 }
 
 // NewUserStore creates a new UserStore.
 func NewUserStore(db *sql.DB) *UserStore {
-	return &UserStore{db: db}
+	return &UserStore{db: db, q: database.New(db)}
 }
 
 // Insert creates a new user record.
 func (s *UserStore) Insert(u *User) error {
-	query := `INSERT INTO users (id, username, totp_secret, role) VALUES (?, ?, ?, ?)`
-	_, err := s.db.Exec(query, u.ID, u.Username, u.TotpSecret, u.Role)
-	return err
+	ctx := context.Background()
+	return s.q.CreateUser(ctx, database.CreateUserParams{
+		ID:         u.ID,
+		Username:   u.Username,
+		TotpSecret: u.TotpSecret,
+		Role:       u.Role,
+	})
 }
 
 // GetByID retrieves a user by ID.
 func (s *UserStore) GetByID(id string) (*User, error) {
-	u := &User{}
-	err := s.db.QueryRow(
-		"SELECT id, username, totp_secret, role, created_at FROM users WHERE id = ?", id,
-	).Scan(&u.ID, &u.Username, &u.TotpSecret, &u.Role, &u.CreatedAt)
+	ctx := context.Background()
+	u, err := s.q.GetUser(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return u, nil
+	return &User{
+		ID:         u.ID,
+		Username:   u.Username,
+		TotpSecret: u.TotpSecret,
+		Role:       u.Role,
+		CreatedAt:  u.CreatedAt,
+	}, nil
 }
 
 // GetByUsername retrieves a user by username (for login).
 func (s *UserStore) GetByUsername(username string) (*User, error) {
-	u := &User{}
-	err := s.db.QueryRow(
-		"SELECT id, username, totp_secret, role, created_at FROM users WHERE username = ?", username,
-	).Scan(&u.ID, &u.Username, &u.TotpSecret, &u.Role, &u.CreatedAt)
+	ctx := context.Background()
+	u, err := s.q.GetUserByUsername(ctx, username)
 	if err != nil {
 		return nil, err
 	}
-	return u, nil
+	return &User{
+		ID:         u.ID,
+		Username:   u.Username,
+		TotpSecret: u.TotpSecret,
+		Role:       u.Role,
+		CreatedAt:  u.CreatedAt,
+	}, nil
 }
 
 // List returns all users.
 func (s *UserStore) List() ([]*User, error) {
-	rows, err := s.db.Query("SELECT id, username, totp_secret, role, created_at FROM users ORDER BY created_at DESC")
+	ctx := context.Background()
+	items, err := s.q.ListUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var users []*User
-	for rows.Next() {
-		u := &User{}
-		if err := rows.Scan(&u.ID, &u.Username, &u.TotpSecret, &u.Role, &u.CreatedAt); err != nil {
-			return nil, err
-		}
-		users = append(users, u)
+	users := make([]*User, 0, len(items))
+	for _, u := range items {
+		users = append(users, &User{
+			ID:         u.ID,
+			Username:   u.Username,
+			TotpSecret: u.TotpSecret,
+			Role:       u.Role,
+			CreatedAt:  u.CreatedAt,
+		})
 	}
-	return users, rows.Err()
+	return users, nil
 }
 
 // GetAdminUserID returns the ID of one admin user (used for global category bootstrap).

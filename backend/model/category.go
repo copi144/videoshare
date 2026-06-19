@@ -1,9 +1,12 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"regexp"
 	"time"
+
+	"videoshare/database"
 )
 
 var validName = regexp.MustCompile(`^[0-9A-Za-z\-]+$`)
@@ -43,187 +46,179 @@ type Category struct {
 // CategoryStore provides CRUD operations for categories.
 type CategoryStore struct {
 	db *sql.DB
+	q  *database.Queries
 }
 
 // NewCategoryStore creates a new CategoryStore.
 func NewCategoryStore(db *sql.DB) *CategoryStore {
-	return &CategoryStore{db: db}
+	return &CategoryStore{db: db, q: database.New(db)}
 }
 
 // Insert creates a new category.
 func (s *CategoryStore) Insert(c *Category) error {
-	_, err := s.db.Exec(
-		"INSERT INTO categories (id, name, description, created_by) VALUES (?, ?, ?, ?)",
-		c.ID, c.Name, c.Description, c.CreatedBy,
-	)
-	return err
+	ctx := context.Background()
+	return s.q.CreateCategory(ctx, database.CreateCategoryParams{
+		ID:          c.ID,
+		Name:        c.Name,
+		Description: c.Description,
+		CreatedBy:   c.CreatedBy,
+	})
 }
 
 // GetByID retrieves a category by ID.
 func (s *CategoryStore) GetByID(id string) (*Category, error) {
-	c := &Category{}
-	err := s.db.QueryRow(
-		"SELECT id, name, description, created_by, created_at FROM categories WHERE id = ?", id,
-	).Scan(&c.ID, &c.Name, &c.Description, &c.CreatedBy, &c.CreatedAt)
+	ctx := context.Background()
+	c, err := s.q.GetCategory(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return c, nil
+	return &Category{
+		ID:          c.ID,
+		Name:        c.Name,
+		Description: c.Description,
+		CreatedBy:   c.CreatedBy,
+		CreatedAt:   c.CreatedAt,
+	}, nil
 }
 
 // List returns all categories.
 func (s *CategoryStore) List() ([]*Category, error) {
-	rows, err := s.db.Query("SELECT id, name, description, created_by, created_at FROM categories ORDER BY created_at DESC")
+	ctx := context.Background()
+	items, err := s.q.ListCategories(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var cats []*Category
-	for rows.Next() {
-		c := &Category{}
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.CreatedBy, &c.CreatedAt); err != nil {
-			return nil, err
-		}
-		cats = append(cats, c)
+	cats := make([]*Category, 0, len(items))
+	for _, c := range items {
+		cats = append(cats, &Category{
+			ID:          c.ID,
+			Name:        c.Name,
+			Description: c.Description,
+			CreatedBy:   c.CreatedBy,
+			CreatedAt:   c.CreatedAt,
+		})
 	}
-	return cats, rows.Err()
+	return cats, nil
 }
 
 // ListByUploader returns categories that a specific uploader is assigned to.
 func (s *CategoryStore) ListByUploader(userID string) ([]*Category, error) {
-	query := `SELECT c.id, c.name, c.description, c.created_by, c.created_at
-		FROM categories c
-		JOIN category_uploaders cu ON cu.category_id = c.id
-		WHERE cu.user_id = ?
-		ORDER BY c.created_at DESC`
-
-	rows, err := s.db.Query(query, userID)
+	ctx := context.Background()
+	items, err := s.q.ListCategoriesByUploader(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var cats []*Category
-	for rows.Next() {
-		c := &Category{}
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.CreatedBy, &c.CreatedAt); err != nil {
-			return nil, err
-		}
-		cats = append(cats, c)
+	cats := make([]*Category, 0, len(items))
+	for _, c := range items {
+		cats = append(cats, &Category{
+			ID:          c.ID,
+			Name:        c.Name,
+			Description: c.Description,
+			CreatedBy:   c.CreatedBy,
+			CreatedAt:   c.CreatedAt,
+		})
 	}
-	return cats, rows.Err()
+	return cats, nil
 }
 
 // ListPaginated returns a page of categories ordered by creation date descending.
 func (s *CategoryStore) ListPaginated(limit, offset int) ([]*Category, error) {
-	query := `SELECT id, name, description, created_by, created_at FROM categories ORDER BY created_at DESC LIMIT ? OFFSET ?`
-
-	rows, err := s.db.Query(query, limit, offset)
+	ctx := context.Background()
+	items, err := s.q.ListCategoriesPaginated(ctx, database.ListCategoriesPaginatedParams{
+		Limit:  int64(limit),
+		Offset: int64(offset),
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var cats []*Category
-	for rows.Next() {
-		c := &Category{}
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.CreatedBy, &c.CreatedAt); err != nil {
-			return nil, err
-		}
-		cats = append(cats, c)
+	cats := make([]*Category, 0, len(items))
+	for _, c := range items {
+		cats = append(cats, &Category{
+			ID:          c.ID,
+			Name:        c.Name,
+			Description: c.Description,
+			CreatedBy:   c.CreatedBy,
+			CreatedAt:   c.CreatedAt,
+		})
 	}
-	return cats, rows.Err()
+	return cats, nil
 }
 
 // Count returns the total number of categories.
 func (s *CategoryStore) Count() (int, error) {
-	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM categories").Scan(&count)
-	return count, err
+	ctx := context.Background()
+	count, err := s.q.CountCategories(ctx)
+	return int(count), err
 }
 
 // ListByUploaderPaginated returns a page of categories that a specific uploader is assigned to.
 func (s *CategoryStore) ListByUploaderPaginated(userID string, limit, offset int) ([]*Category, error) {
-	query := `SELECT c.id, c.name, c.description, c.created_by, c.created_at
-		FROM categories c
-		JOIN category_uploaders cu ON cu.category_id = c.id
-		WHERE cu.user_id = ?
-		ORDER BY c.created_at DESC LIMIT ? OFFSET ?`
-
-	rows, err := s.db.Query(query, userID, limit, offset)
+	ctx := context.Background()
+	items, err := s.q.ListCategoriesByUploaderPaginated(ctx, database.ListCategoriesByUploaderPaginatedParams{
+		UserID: userID,
+		Limit:  int64(limit),
+		Offset: int64(offset),
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var cats []*Category
-	for rows.Next() {
-		c := &Category{}
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.CreatedBy, &c.CreatedAt); err != nil {
-			return nil, err
-		}
-		cats = append(cats, c)
+	cats := make([]*Category, 0, len(items))
+	for _, c := range items {
+		cats = append(cats, &Category{
+			ID:          c.ID,
+			Name:        c.Name,
+			Description: c.Description,
+			CreatedBy:   c.CreatedBy,
+			CreatedAt:   c.CreatedAt,
+		})
 	}
-	return cats, rows.Err()
+	return cats, nil
 }
 
 // CountByUploader returns the total number of categories that a specific uploader is assigned to.
 func (s *CategoryStore) CountByUploader(userID string) (int, error) {
-	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM categories c JOIN category_uploaders cu ON cu.category_id = c.id WHERE cu.user_id = ?`, userID).Scan(&count)
-	return count, err
+	ctx := context.Background()
+	count, err := s.q.CountCategoriesByUploader(ctx, userID)
+	return int(count), err
 }
 
 // AssignUploaders sets the uploaders for a category (replaces all existing).
 func (s *CategoryStore) AssignUploaders(categoryID string, userIDs []string) error {
+	ctx := context.Background()
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec("DELETE FROM category_uploaders WHERE category_id = ?", categoryID)
-	if err != nil {
+	qtx := s.q.WithTx(tx)
+	if err := qtx.ClearCategoryUploaders(ctx, categoryID); err != nil {
 		return err
 	}
-
 	for _, uid := range userIDs {
-		_, err = tx.Exec("INSERT INTO category_uploaders (category_id, user_id) VALUES (?, ?)", categoryID, uid)
-		if err != nil {
+		if err := qtx.AddCategoryUploader(ctx, database.AddCategoryUploaderParams{
+			CategoryID: categoryID,
+			UserID:     uid,
+		}); err != nil {
 			return err
 		}
 	}
-
 	return tx.Commit()
 }
 
 // GetUploaders returns user IDs assigned to a category.
 func (s *CategoryStore) GetUploaders(categoryID string) ([]string, error) {
-	rows, err := s.db.Query("SELECT user_id FROM category_uploaders WHERE category_id = ?", categoryID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+	ctx := context.Background()
+	return s.q.GetCategoryUploaders(ctx, categoryID)
 }
 
 // IsUploaderAuthorized checks if a user is assigned to upload to a category.
 func (s *CategoryStore) IsUploaderAuthorized(userID, categoryID string) (bool, error) {
-	var count int
-	err := s.db.QueryRow(
-		"SELECT COUNT(*) FROM category_uploaders WHERE category_id = ? AND user_id = ?",
-		categoryID, userID,
-	).Scan(&count)
+	ctx := context.Background()
+	count, err := s.q.IsUploaderAuthorized(ctx, database.IsUploaderAuthorizedParams{
+		CategoryID: categoryID,
+		UserID:     userID,
+	})
 	if err != nil {
 		return false, err
 	}
@@ -232,16 +227,13 @@ func (s *CategoryStore) IsUploaderAuthorized(userID, categoryID string) (bool, e
 
 // GetVideoCount returns the number of resources in a given category.
 func (s *CategoryStore) GetVideoCount(categoryID string) (int, error) {
-	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM resources WHERE category_id = ?", categoryID).Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
+	ctx := context.Background()
+	count, err := s.q.GetCategoryVideoCount(ctx, sql.NullString{String: categoryID, Valid: categoryID != ""})
+	return int(count), err
 }
 
 // Delete removes a category.
 func (s *CategoryStore) Delete(id string) error {
-	_, err := s.db.Exec("DELETE FROM categories WHERE id = ?", id)
-	return err
+	ctx := context.Background()
+	return s.q.DeleteCategory(ctx, id)
 }
