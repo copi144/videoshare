@@ -61,7 +61,7 @@
 
   let selectedCategoryId: string = 'global';
   let selectedPlaylistId: string | null = null;
-  let selectedResourceType: 'video' | 'audio' | 'image' = 'video';
+  let selectedResourceType: 'all' | 'video' | 'audio' | 'image' = 'all';
   let categories: Category[] = [];
   let playlists: Playlist[] = [];
 
@@ -87,17 +87,15 @@
   let uploading = false;
   let copySuccess: string | null = null;
 
-  // --- File type filter ---
-  let fileTypeFilter: '' | 'video' | 'audio' | 'image' = '';
-
+  // --- File type filter (driven by top type selector) ---
   const videoAccept = 'video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv';
   const audioAccept = 'audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,audio/aac';
   const imageAccept = 'image/jpeg,image/png,image/webp,image/gif';
   const allAccept = `${videoAccept},${audioAccept},${imageAccept}`;
 
-  $: fileAccept = fileTypeFilter === 'video' ? videoAccept
-    : fileTypeFilter === 'audio' ? audioAccept
-    : fileTypeFilter === 'image' ? imageAccept
+  $: fileAccept = selectedResourceType === 'video' ? videoAccept
+    : selectedResourceType === 'audio' ? audioAccept
+    : selectedResourceType === 'image' ? imageAccept
     : allAccept;
 
   // --- Confirm modal ---
@@ -130,7 +128,9 @@
       } else if (selectedCategoryId) {
         params.category_id = selectedCategoryId;
       }
-      params.resource_type = selectedResourceType;
+      if (selectedResourceType !== 'all') {
+        params.resource_type = selectedResourceType;
+      }
       const data = await listResources(params);
       resources = data.resources;
       total = data.total;
@@ -226,7 +226,6 @@
       await uploadVideo(fd);
       uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
       selectedFile = null;
-      fileTypeFilter = '';
       await loadResources();
     } catch (e: unknown) {
       uploadError = e instanceof Error ? e.message : 'Upload failed.';
@@ -452,6 +451,7 @@
               {/each}
             </select>
             <select bind:value={selectedResourceType} on:change={onTypeChange}>
+              <option value="all">All</option>
               <option value="video">Video</option>
               <option value="audio">Audio</option>
               <option value="image">Image</option>
@@ -625,13 +625,6 @@
               </select>
             </label>
             <div>
-              <label for="file-type" class="block text-sm font-medium text-gray-700 mb-1">File Type</label>
-              <select id="file-type" bind:value={fileTypeFilter} class="mb-1">
-                <option value="">All supported files</option>
-                <option value="video">All videos</option>
-                <option value="audio">All audios</option>
-                <option value="image">All images</option>
-              </select>
               <input
                 type="file"
                 id="file"
@@ -755,10 +748,8 @@
 
   .action-bar-left {
     flex: 0 0 auto;
-  }
-
-  .action-bar-left select {
-    min-width: 160px;
+    display: flex;
+    gap: 0.5rem;
   }
 
   .action-bar-right {
