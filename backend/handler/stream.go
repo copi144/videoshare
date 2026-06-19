@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -95,6 +96,49 @@ func (h *StreamHandler) ServeVideo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
+
+	// If video is transcoded (done), don't serve the original file.
+	// The video is only available via HLS.
+	if resource.TranscodeStatus == "done" && !resource.NoTranscode {
+		http.Error(w, "Video only available via HLS streaming", http.StatusNotFound)
+		return
+	}
+
+	http.ServeFile(w, r, cleanPath)
+}
+
+// ServeDownload serves the original video file for download, regardless of transcode status.
+// GET /v/{id}/download
+func (h *StreamHandler) ServeDownload(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		http.Error(w, "Resource not found", http.StatusNotFound)
+		return
+	}
+
+	if resource.Banned {
+		http.Error(w, "This video has been banned", http.StatusGone)
+		return
+	}
+
+	originalPath := storage.OriginalPath(h.dataDir, id)
+	cleanPath := filepath.Clean(originalPath)
+	hashDir := filepath.Clean(storage.HashPath(h.dataDir, id))
+
+	if !strings.HasPrefix(cleanPath, hashDir) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	// Set Content-Disposition to force download with original filename.
+	filename := resource.Filename
+	if filename == "" {
+		filename = id + ".mp4"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Type", resource.ContentType)
 
 	http.ServeFile(w, r, cleanPath)
 }

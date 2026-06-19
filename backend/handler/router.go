@@ -21,7 +21,7 @@ import (
 func NewRouter(sm *scs.SessionManager,
 	resourceStore *model.ResourceStore, dataDir string, db *sql.DB,
 	userStore *model.UserStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore,
-	transcodeQueue *transcode.Queue) (http.Handler, []func()) {
+	transcodeQueue *transcode.Queue, ffmpegPath string) (http.Handler, []func()) {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -54,7 +54,7 @@ func NewRouter(sm *scs.SessionManager,
 	// Create handlers with dependency injection.
 	userH := NewUserHandler(userStore, sm)
 	authH := NewAuthHandler(resourceStore, sm)
-	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, sm, userStore, playlistStore, transcodeQueue)
+	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, sm, userStore, playlistStore, transcodeQueue, ffmpegPath)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
 	categoryH := NewCategoryHandler(categoryStore, userStore, sm)
@@ -115,6 +115,9 @@ func NewRouter(sm *scs.SessionManager,
 
 	// HLS streaming — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}/hls/*", streamH.ServeHLS)
+
+	// Download — accessible by both system users and share-link viewers
+	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}/download", streamH.ServeDownload)
 
 	// Resource detail — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/resources/{id}", resourceH.GetResourceAPI)

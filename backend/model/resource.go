@@ -22,6 +22,7 @@ type Resource struct {
 	CategoryID       string    `json:"category_id"`
 	TranscodeStatus  string    `json:"transcode_status"`
 	Banned           bool      `json:"banned"`
+	NoTranscode      bool      `json:"no_transcode"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -40,6 +41,10 @@ func NewResourceStore(db *sql.DB) *ResourceStore {
 // Insert creates a new resource record.
 func (s *ResourceStore) Insert(r *Resource) error {
 	ctx := context.Background()
+	noTranscode := int64(0)
+	if r.NoTranscode {
+		noTranscode = 1
+	}
 	return s.q.CreateResource(ctx, database.CreateResourceParams{
 		ID:           r.ID,
 		Title:        r.Title,
@@ -49,6 +54,7 @@ func (s *ResourceStore) Insert(r *Resource) error {
 		ContentType:  r.ContentType,
 		UploadedBy:   sql.NullString{String: r.UploadedBy, Valid: r.UploadedBy != ""},
 		CategoryID:   sql.NullString{String: r.CategoryID, Valid: r.CategoryID != ""},
+		NoTranscode:  noTranscode,
 	})
 }
 
@@ -71,6 +77,7 @@ func (s *ResourceStore) GetByID(id string) (*Resource, error) {
 		CategoryID:      r.CategoryID.String,
 		TranscodeStatus: r.TranscodeStatus,
 		Banned:          r.Banned != 0,
+		NoTranscode:     r.NoTranscode != 0,
 		CreatedAt:       r.CreatedAt,
 		UpdatedAt:       r.UpdatedAt,
 	}, nil
@@ -97,6 +104,7 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
+			NoTranscode:     r.NoTranscode != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -125,6 +133,7 @@ func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
+			NoTranscode:     r.NoTranscode != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -156,6 +165,7 @@ func (s *ResourceStore) ListPaginated(limit, offset int) ([]*Resource, error) {
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
+			NoTranscode:     r.NoTranscode != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -195,6 +205,7 @@ func (s *ResourceStore) ListByUploaderPaginated(userID string, limit, offset int
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
+			NoTranscode:     r.NoTranscode != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -283,6 +294,7 @@ func (s *ResourceStore) ListByTranscodeStatus(status string) ([]*Resource, error
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
+			NoTranscode:     r.NoTranscode != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})

@@ -105,23 +105,17 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 		"-hls_flags", "independent_segments",
 		"-hls_segment_filename", filepath.Join(outputDir, "%v", "%04d.ts"),
 		"-master_pl_name", "master.m3u8",
-		filepath.Join(outputDir, "%v.m3u8"),
+		filepath.Join(outputDir, "%v", "playlist.m3u8"),
 	)
 
 	return exec.Command(cfg.FFmpegPath, args...)
 }
 
-// RenameHLSOutputs renames FFmpeg's numbered HLS outputs (0, 1, 2) to resolution names (360p, 720p, 1080p)
-// and updates the variant and master playlist references accordingly.
+// RenameHLSOutputs renames FFmpeg's numbered HLS output directories (0, 1, 2) to resolution names (360p, 720p, 1080p)
+// and updates the master playlist references accordingly.
+// Each variant's playlist is now inside its directory as "playlist.m3u8", so segment references are relative and correct.
 func RenameHLSOutputs(outputDir string, qualities []Quality) error {
 	for i, q := range qualities {
-		// Rename playlist: 0.m3u8 → 360p.m3u8
-		oldPlaylist := filepath.Join(outputDir, fmt.Sprintf("%d.m3u8", i))
-		newPlaylist := filepath.Join(outputDir, fmt.Sprintf("%s.m3u8", q.Name))
-		if err := os.Rename(oldPlaylist, newPlaylist); err != nil {
-			return fmt.Errorf("rename playlist %s -> %s: %w", oldPlaylist, newPlaylist, err)
-		}
-
 		// Rename segment dir: 0/ -> 360p/
 		oldDir := filepath.Join(outputDir, fmt.Sprintf("%d", i))
 		newDir := filepath.Join(outputDir, q.Name)
@@ -130,23 +124,7 @@ func RenameHLSOutputs(outputDir string, qualities []Quality) error {
 		}
 	}
 
-	// Update variant playlist segment references (e.g., "0/0000.ts" → "360p/0000.ts")
-	for i, q := range qualities {
-		playlistPath := filepath.Join(outputDir, fmt.Sprintf("%s.m3u8", q.Name))
-		data, err := os.ReadFile(playlistPath)
-		if err != nil {
-			return fmt.Errorf("read variant playlist %s: %w", playlistPath, err)
-		}
-		// Replace the old numbered directory prefix in segment paths
-		oldPrefix := fmt.Sprintf("%d/", i)
-		newPrefix := fmt.Sprintf("%s/", q.Name)
-		data = bytes.ReplaceAll(data, []byte(oldPrefix), []byte(newPrefix))
-		if err := os.WriteFile(playlistPath, data, 0644); err != nil {
-			return fmt.Errorf("write variant playlist %s: %w", playlistPath, err)
-		}
-	}
-
-	// Update master playlist stream references
+	// Update master playlist references: "0/playlist.m3u8" → "360p/playlist.m3u8"
 	masterPath := filepath.Join(outputDir, "master.m3u8")
 	data, err := os.ReadFile(masterPath)
 	if err != nil {
@@ -154,8 +132,8 @@ func RenameHLSOutputs(outputDir string, qualities []Quality) error {
 	}
 
 	for i, q := range qualities {
-		oldRef := fmt.Sprintf("%d.m3u8", i)
-		newRef := fmt.Sprintf("%s.m3u8", q.Name)
+		oldRef := fmt.Sprintf("%d/playlist.m3u8", i)
+		newRef := fmt.Sprintf("%s/playlist.m3u8", q.Name)
 		data = bytes.ReplaceAll(data, []byte(oldRef), []byte(newRef))
 	}
 

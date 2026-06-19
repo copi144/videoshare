@@ -105,4 +105,5 @@
     <p style="color: var(--muted-color, #888); font-style: italic;">No description</p>
   {/if}
   <p>Views: {resource.views} | Size: {formatSize(resource.file_size)} | Uploaded by: {resource.uploaded_username}</p>
+  <a href="/v/{resource.id}/download" class="outline" role="button">Download Original</a>
 {/if}

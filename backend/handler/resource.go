@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -32,13 +33,14 @@ type ResourceHandler struct {
 	dataDir         string
 	sm              *scs.SessionManager
 	userStore       *model.UserStore
+	ffmpegPath      string
 }
 
 // NewResourceHandler creates a new ResourceHandler with injected dependencies.
 func NewResourceHandler(store *model.ResourceStore, categoryStore *model.CategoryStore,
 	dataDir string,
 	sm *scs.SessionManager, userStore *model.UserStore, playlistStore *model.PlaylistStore,
-	transcodeQueue *transcode.Queue) *ResourceHandler {
+	transcodeQueue *transcode.Queue, ffmpegPath string) *ResourceHandler {
 	return &ResourceHandler{
 		store:          store,
 		categoryStore:  categoryStore,
@@ -47,6 +49,7 @@ func NewResourceHandler(store *model.ResourceStore, categoryStore *model.Categor
 		dataDir:        dataDir,
 		sm:             sm,
 		userStore:      userStore,
+		ffmpegPath:     ffmpegPath,
 	}
 }
 
@@ -64,6 +67,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	categoryID := r.FormValue("category_id")
 	readme := r.FormValue("readme")
+	noTranscode := r.FormValue("no_transcode") == "1"
 
 	// Category is required.
 	if categoryID == "" {
@@ -145,6 +149,45 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	hashHex := hex.EncodeToString(hashWriter.Sum(nil))
 
+	// Probe video dimensions using ffprobe.
+	dims, probeErr := upload.ProbeVideoDimensions(upload.FFprobePath(h.ffmpegPath), tmpFile.Name())
+	if probeErr != nil {
+		slog.Warn("failed to probe video dimensions, skipping validation", "error", probeErr)
+	} else {
+		// Validate: short side must be >= 144 pixels
+		if dims.MinSide() < upload.MinShortSide {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			respondError(w, r, http.StatusBadRequest,
+				fmt.Sprintf("Video too small: short side is %dpx, minimum is %dpx", dims.MinSide(), upload.MinShortSide))
+			return
+		}
+		// Validate: aspect ratio must not exceed 4:1
+		if dims.AspectRatio() > upload.MaxAspectRatio {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			respondError(w, r, http.StatusBadRequest,
+				fmt.Sprintf("Video aspect ratio %.1f:1 exceeds maximum 4:1", dims.AspectRatio()))
+			return
+		}
+		// Auto-disable transcoding for videos with short side < 360px
+		if dims.MinSide() < upload.NoTranscodeSide {
+			noTranscode = true
+		}
+	}
+
+	// Probe video duration.
+	duration, durErr := upload.ProbeVideoDuration(upload.FFprobePath(h.ffmpegPath), tmpFile.Name())
+	if durErr != nil {
+		slog.Warn("failed to probe video duration, skipping validation", "error", durErr)
+	} else if duration < upload.MinDuration {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		respondError(w, r, http.StatusBadRequest,
+			fmt.Sprintf("Video too short: %.2f seconds, minimum is %.0f second", duration, upload.MinDuration))
+		return
+	}
+
 	// Check for duplicate content by hash.
 	// Duplicate detection uses content BLAKE3 hash as the resource ID (PK). The row and files are removed on delete, freeing the hash for re-upload of identical content.
 	existing, err := h.store.GetByID(hashHex)
@@ -198,6 +241,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		ContentType:  contentType,
 		UploadedBy:   userID,
 		CategoryID:   categoryID,
+		NoTranscode:  noTranscode,
 	}
 
 	if err := h.store.Insert(resource); err != nil {
@@ -213,12 +257,16 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		"size", header.Size,
 	)
 
-	// Submit transcode job (non-blocking).
-	h.transcodeQueue.Submit(transcode.Job{
-		ResourceID: hashHex,
-		InputPath:  originalPath,
-		OutputDir:  storage.HLSPath(h.dataDir, hashHex),
-	})
+	// Submit transcode job (non-blocking), unless skipped.
+	if !noTranscode {
+		h.transcodeQueue.Submit(transcode.Job{
+			ResourceID: hashHex,
+			InputPath:  originalPath,
+			OutputDir:  storage.HLSPath(h.dataDir, hashHex),
+		})
+	} else {
+		slog.Info("transcode skipped by uploader request", "resource_id", hashHex)
+	}
 
 	respondJSONOK(w, map[string]interface{}{
 		"redirect": "/admin",

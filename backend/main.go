@@ -86,7 +86,7 @@ func main() {
 	// Reset stalled 'processing' jobs to 'pending' on startup.
 	transcode.StartupRecovery(resourceStore)
 
-	router, rateLimitStops := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, tq)
+	router, rateLimitStops := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, tq, cfg.FFmpegPath)
 
 	addr := cfg.Addr
 	srv := &http.Server{Addr: addr, Handler: router}

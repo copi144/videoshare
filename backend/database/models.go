@@ -50,6 +50,7 @@ type Resource struct {
 	CategoryID      sql.NullString
 	TranscodeStatus string
 	Banned          int64
+	NoTranscode     int64
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

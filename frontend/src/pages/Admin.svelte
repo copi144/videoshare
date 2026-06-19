@@ -30,7 +30,7 @@
 
   let resources: Resource[] = [];
   let categories: Category[] = [];
-  let uploadForm = { title: '', readme: '', category_id: '', password: '' };
+  let uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
   let selectedFile: File | null = null;
   let error: string | null = null;
   let uploadError: string | null = null;
@@ -107,12 +107,13 @@
       fd.append('title', uploadForm.title.trim());
       fd.append('readme', uploadForm.readme.trim());
       fd.append('category_id', uploadForm.category_id);
+      fd.append('no_transcode', uploadForm.noTranscode ? '1' : '0');
       if (uploadForm.password.trim()) {
         fd.append('password', uploadForm.password.trim());
       }
       await uploadVideo(fd);
       // Reset form
-      uploadForm = { title: '', readme: '', category_id: '', password: '' };
+      uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
       selectedFile = null;
       // Reload resources
       await loadData();
@@ -221,6 +222,10 @@
         <input type="text" id="password" name="password" bind:value={uploadForm.password} />
       </label>
     {/if}
+    <label>
+      <input type="checkbox" bind:checked={uploadForm.noTranscode} />
+      Skip transcoding (serve original file directly)
+    </label>
     {#if uploadError}
       <article class="error-box">{uploadError}</article>
     {/if}
