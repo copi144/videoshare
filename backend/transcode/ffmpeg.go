@@ -27,24 +27,31 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 	}
 
 	// Build the filter_complex string:
-	//   split=N[v1][v2]...[vN];[v1]scale=w=W1:h=H1[v1out];[v2]scale=w=W2:h=H2[v2out];...
+	//   [0:v]scale=w=W1:h=H1[v0out];[0:v]scale=w=W2:h=H2[v1out];...
+	//   [0:a]asplit=N[a0][a1]...
+	// Each scale and asplit output gets its own stream, which avoids
+	// FFmpeg 7.x "Same elementary stream found more than once" error.
 	var filterParts []string
-	splitLabels := make([]string, len(qualities))
-	for i := range qualities {
-		splitLabels[i] = fmt.Sprintf("[v%d]", i)
-	}
-	filterParts = append(filterParts, fmt.Sprintf("[0:v]split=%d%s", len(qualities), strings.Join(splitLabels, "")))
-
 	for i, q := range qualities {
-		filterParts = append(filterParts, fmt.Sprintf("%sscale=w=%d:h=%d[v%dout]", splitLabels[i], q.Width, q.Height, i))
+		filterParts = append(filterParts, fmt.Sprintf("[0:v]scale=w=%d:h=%d[v%dout]", q.Width, q.Height, i))
+	}
+	if len(qualities) > 1 {
+		// Create N copies of the audio stream so each variant has its own.
+		labels := make([]string, len(qualities))
+		for i := range qualities {
+			labels[i] = fmt.Sprintf("[a%dout]", i)
+		}
+		filterParts = append(filterParts, fmt.Sprintf("[0:a]asplit=%d%s", len(qualities), strings.Join(labels, "")))
+	} else {
+		filterParts = append(filterParts, "[0:a]acopy[a0out]")
 	}
 	filterComplex := strings.Join(filterParts, ";")
 
 	// Build the var_stream_map string:
-	//   v:0,a:0 v:1,a:0 v:2,a:0 ...
+	//   v:0,a:0 v:1,a:1 v:2,a:2 ...
 	var streamMapParts []string
 	for i := range qualities {
-		streamMapParts = append(streamMapParts, fmt.Sprintf("v:%d,a:0", i))
+		streamMapParts = append(streamMapParts, fmt.Sprintf("v:%d,a:%d", i, i))
 	}
 	varStreamMap := strings.Join(streamMapParts, " ")
 
@@ -72,14 +79,16 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 		}
 	}
 
-	// Audio encoding (single shared audio stream for all renditions).
-	args = append(args,
-		"-map", "0:a",
-		"-c:a", "aac",
-		"-ar", "48000",
-		"-ac", "2",
-		"-b:a", qualities[0].AudioBitrate,
-	)
+	// Audio encoding (separate audio stream per rendition).
+	for i, q := range qualities {
+		args = append(args,
+			"-map", fmt.Sprintf("[a%dout]", i),
+			fmt.Sprintf("-c:a:%d", i), "aac",
+			fmt.Sprintf("-ar:a:%d", i), "48000",
+			fmt.Sprintf("-ac:a:%d", i), "2",
+			fmt.Sprintf("-b:a:%d", i), q.AudioBitrate,
+		)
+	}
 
 	// Keyframe alignment parameters.
 	args = append(args,
