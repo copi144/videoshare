@@ -72,7 +72,7 @@ func main() {
 	sm.Cookie.Secure = cfg.CookieSecure
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.SameSite = http.SameSiteLaxMode
-	sm.Cookie.Path = "/v"
+	sm.Cookie.Path = "/"
 
 	resourceStore := model.NewResourceStore(db)
 	userStore := model.NewUserStore(db)
