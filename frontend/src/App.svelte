@@ -27,6 +27,13 @@
     if (match) {
       shareId = match[1];
       view = 'share';
+    } else {
+      // Hash doesn't match video route — return to admin or login
+      if ($isAuthenticated) {
+        view = 'admin';
+      } else {
+        view = 'login';
+      }
     }
   }
 
