@@ -45,20 +45,6 @@
 </script>
 
 <div class="space-y-4">
-  <!-- Create form -->
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
-    <h2 class="text-base font-semibold text-gray-900 mb-3">Create User</h2>
-    <form on:submit|preventDefault={handleCreate} class="flex items-end gap-3">
-      <div class="flex-1">
-        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-        <input type="text" id="username" name="username" bind:value={username} required autocomplete="off" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
-      </div>
-      <button type="submit" disabled={loading} aria-busy={loading} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">
-        {loading ? 'Creating…' : 'Create User'}
-      </button>
-    </form>
-  </div>
-
   {#if createdUser}
     <div class="rounded-lg border border-gray-200 bg-white p-4">
       <h2 class="text-base font-semibold text-gray-900 mb-1">User Created: {createdUser.username}</h2>
@@ -81,4 +67,18 @@
       </div>
     </div>
   {/if}
+
+  <!-- Create form -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Create User</h2>
+    <form on:submit|preventDefault={handleCreate} class="flex items-end gap-3">
+      <div class="flex-1">
+        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+        <input type="text" id="username" name="username" bind:value={username} required autocomplete="off" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+      </div>
+      <button type="submit" disabled={loading} aria-busy={loading} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">
+        {loading ? 'Creating…' : 'Create User'}
+      </button>
+    </form>
+  </div>
 </div>

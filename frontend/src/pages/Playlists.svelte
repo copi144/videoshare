@@ -93,6 +93,42 @@
     <div class="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">{success}</div>
   {/if}
 
+  <!-- Table -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Playlists</h2>
+    {#if loading}
+      <p class="text-gray-500 text-sm">Loading playlists…</p>
+    {:else if playlists.length === 0}
+      <p class="text-gray-500 text-sm">No playlists yet.</p>
+    {:else}
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-gray-200">
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Name</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Category</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Description</th>
+            <th class="py-2 text-xs font-medium text-gray-500 uppercase">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each playlists as pl}
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pr-4">{pl.name}</td>
+              <td class="py-2 pr-4 text-gray-500">{categoryMap[pl.category_id] || 'Unknown'}</td>
+              <td class="py-2 pr-4 text-gray-500">{pl.description || '—'}</td>
+              <td class="py-2 text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      <div class="mt-3 flex items-center gap-2 text-sm">
+        <span class="text-gray-500">{offset + 1}–{offset + playlists.length} of {total}</span>
+        <button type="button" class="row-action-btn" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
+        <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadData(); }} disabled={offset + playlists.length >= total}>Next</button>
+      </div>
+    {/if}
+  </div>
+
   <!-- Create form -->
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-base font-semibold text-gray-900 mb-3">Create Playlist</h2>
@@ -126,41 +162,5 @@
       </div>
       <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
     </form>
-  </div>
-
-  <!-- Table -->
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
-    <h2 class="text-base font-semibold text-gray-900 mb-3">Playlists</h2>
-    {#if loading}
-      <p class="text-gray-500 text-sm">Loading playlists…</p>
-    {:else if playlists.length === 0}
-      <p class="text-gray-500 text-sm">No playlists yet. Create one above.</p>
-    {:else}
-      <table class="w-full text-left text-sm">
-        <thead>
-          <tr class="border-b border-gray-200">
-            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Name</th>
-            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Category</th>
-            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Description</th>
-            <th class="py-2 text-xs font-medium text-gray-500 uppercase">Created</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each playlists as pl}
-            <tr class="border-b border-gray-100">
-              <td class="py-2 pr-4">{pl.name}</td>
-              <td class="py-2 pr-4 text-gray-500">{categoryMap[pl.category_id] || 'Unknown'}</td>
-              <td class="py-2 pr-4 text-gray-500">{pl.description || '—'}</td>
-              <td class="py-2 text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-      <div class="mt-3 flex items-center gap-2 text-sm">
-        <span class="text-gray-500">{offset + 1}–{offset + playlists.length} of {total}</span>
-        <button type="button" class="row-action-btn" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
-        <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadData(); }} disabled={offset + playlists.length >= total}>Next</button>
-      </div>
-    {/if}
   </div>
 </div>

@@ -71,29 +71,13 @@
 </script>
 
 <div class="space-y-4">
-  <!-- Create form -->
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
-    <h2 class="text-base font-semibold text-gray-900 mb-3">Create Category</h2>
-    <form on:submit|preventDefault={handleCreate} class="space-y-3">
-      <div>
-        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-        <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
-      </div>
-      <div>
-        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-        <textarea id="description" name="description" bind:value={formDescription} class="w-full"></textarea>
-      </div>
-      <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
-    </form>
-  </div>
-
   <!-- Table -->
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-base font-semibold text-gray-900 mb-3">Categories</h2>
     {#if loading}
       <p class="text-gray-500 text-sm">Loading categories…</p>
     {:else if categories.length === 0}
-      <p class="text-gray-500 text-sm">No categories yet. Create one above.</p>
+      <p class="text-gray-500 text-sm">No categories yet.</p>
     {:else}
       <table class="w-full text-left text-sm">
         <thead>
@@ -123,5 +107,21 @@
         <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadCategories(); }} disabled={offset + categories.length >= total}>Next</button>
       </div>
     {/if}
+  </div>
+
+  <!-- Create form -->
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-3">Create Category</h2>
+    <form on:submit|preventDefault={handleCreate} class="space-y-3">
+      <div>
+        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+      </div>
+      <div>
+        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <textarea id="description" name="description" bind:value={formDescription} class="w-full"></textarea>
+      </div>
+      <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
+    </form>
   </div>
 </div>
