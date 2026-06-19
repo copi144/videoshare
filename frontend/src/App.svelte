@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { checkAuth, isAuthenticated, startHeartbeat } from './stores/auth';
   import Login from './pages/Login.svelte';
   import MainApp from './pages/MainApp.svelte';
@@ -19,6 +19,15 @@
   function handleShareSuccess(id: string) {
     shareId = id;
     view = 'watch';
+  }
+
+  // Extract share ID from hash and navigate to share/watch view
+  function handleHashChange() {
+    const match = window.location.hash.match(/^#\/v\/([^/]+)(?:\/watch)?\/?$/);
+    if (match) {
+      shareId = match[1];
+      view = 'share';
+    }
   }
 
   onMount(async () => {
@@ -44,6 +53,13 @@
     if (!match) {
       history.replaceState(null, '', '/');
     }
+
+    // Listen for hash changes (internal navigation via links)
+    window.addEventListener('hashchange', handleHashChange);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('hashchange', handleHashChange);
   });
 </script>
 
