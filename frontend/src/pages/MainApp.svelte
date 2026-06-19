@@ -15,6 +15,7 @@
   import Playlists from './Playlists.svelte';
   import Users from './Users.svelte';
   import ConfirmModal from '../components/ConfirmModal.svelte';
+  import MarkdownEditor from '../components/MarkdownEditor.svelte';
 
   // --- Types ---
 
@@ -591,15 +592,13 @@
               Title
               <input type="text" id="title" name="title" bind:value={uploadForm.title} required />
             </label>
-            <label for="readme">
-              Readme (Markdown)
-              <textarea
-                id="readme"
-                name="readme"
+            <div>
+              <label for="readme" class="block text-sm font-medium text-gray-700 mb-1">Readme (Markdown)</label>
+              <MarkdownEditor
                 bind:value={uploadForm.readme}
                 placeholder="Optional markdown description..."
-              ></textarea>
-            </label>
+              />
+            </div>
             <label for="category">
               Category
               <select id="category" name="category_id" bind:value={uploadForm.category_id} required>

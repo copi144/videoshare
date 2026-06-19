@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@picocss/pico": "^2.1.1",
-    "hls.js": "^1.6.16"
+    "hls.js": "^1.6.16",
+    "marked": "^18.0.5"
   }
 }
