@@ -211,7 +211,7 @@
         type="file"
         id="file"
         name="file"
-        accept="video/mp4,video/webm,video/x-matroska"
+        accept="video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,audio/aac,image/jpeg,image/png,image/webp,image/gif"
         on:change={onFileChange}
         required
       />
