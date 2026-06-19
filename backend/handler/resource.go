@@ -537,7 +537,7 @@ func (h *ResourceHandler) Retranscode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resource.Banned {
-		respondError(w, r, http.StatusGone, "This video has been banned")
+		respondError(w, r, http.StatusGone, "This resource has been banned")
 		return
 	}
 
@@ -546,12 +546,6 @@ func (h *ResourceHandler) Retranscode(w http.ResponseWriter, r *http.Request) {
 	userRole := middleware.GetUserRoleFromContext(r.Context())
 	if userRole != "admin" && resource.UploadedBy != userID {
 		respondError(w, r, http.StatusForbidden, "You can only retranscode your own videos")
-		return
-	}
-
-	// Only video resources support retranscoding.
-	if resource.ResourceType != storage.ResourceTypeVideo {
-		respondError(w, r, http.StatusBadRequest, "Retranscoding is only supported for video resources")
 		return
 	}
 

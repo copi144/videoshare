@@ -203,7 +203,7 @@ func (h *StreamHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
 
 	imagePath := storage.OriginalPath(h.dataDir, storage.ResourceTypeImage, id)
 	// First try the processed image (downsampled).
-	processed := storage.ImagePath(h.dataDir, id, "thumb")
+	processed := storage.ImagePath(h.dataDir, id, "thumb.jpg")
 	cleanProcessed := filepath.Clean(processed)
 	hashDir := filepath.Clean(storage.HashPath(h.dataDir, storage.ResourceTypeImage, id))
 	if strings.HasPrefix(cleanProcessed, hashDir) {

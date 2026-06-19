@@ -184,7 +184,7 @@ func (q *Queue) processAudioJob(job Job) {
 
 func (q *Queue) processImageJob(job Job) {
 	hashDir := filepath.Dir(job.InputPath)
-	outputPath := filepath.Join(hashDir, "thumb")
+	outputPath := filepath.Join(hashDir, "thumb.jpg")
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
 		slog.Error("failed to create image output dir", "resource_id", job.ResourceID, "error", err)
 		return
