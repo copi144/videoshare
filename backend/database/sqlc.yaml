@@ -6,5 +6,5 @@ sql:
     gen:
       go:
         package: "database"
-        out: "../database"
+        out: "."
         emit_empty_slices: true
