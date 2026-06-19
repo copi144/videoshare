@@ -103,3 +103,6 @@
 2026/06/20 03:13:33 "GET http://127.0.0.1:8080/api/resources/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3 HTTP/1.1" from 127.0.0.1:56270 - 200 428B in 310.848µs
 2026/06/20 03:13:33 "GET http://127.0.0.1:8080/v/855ada4f4c84dbeee4f0ee8f55a2757f8615b1eb367b65d4e669e533239815c3/hls/master.m3u8 HTTP/1.1" from 127.0.0.1:56270 - 303 33B in 198.958µs
 2026/06/20 03:13:33 "GET http://127.0.0.1:8080/login HTTP/1.1" from 127.0.0.1:56270 - 200 660995B in 366.578µs
+{"time":"2026-06-20T03:16:43.008998883+08:00","level":"INFO","msg":"shutdown signal received"}
+{"time":"2026-06-20T03:16:43.009440851+08:00","level":"INFO","msg":"transcode queue shut down"}
+{"time":"2026-06-20T03:16:43.010852684+08:00","level":"INFO","msg":"shutdown complete"}

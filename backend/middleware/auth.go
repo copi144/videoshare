@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
@@ -55,6 +56,7 @@ func RequireUserOrVideoAuth(sm *scs.SessionManager) func(http.Handler) http.Hand
 			userID := GetUserID(r.Context(), sm)
 			videoAuth := sm.GetBool(r.Context(), sessionAuthenticatedKey)
 			if userID == "" && !videoAuth {
+				slog.Debug("RequireUserOrVideoAuth redirecting", "path", r.URL.Path, "userID", userID, "videoAuth", videoAuth, "sessionUserID", sm.GetString(r.Context(), "user_id"), "sessionAuth", sm.GetBool(r.Context(), "authenticated"), "token", sm.Token(r.Context()))
 				http.Redirect(w, r, "/login", http.StatusSeeOther)
 				return
 			}

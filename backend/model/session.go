@@ -43,29 +43,37 @@ func (s *SessionStore) cleanup() {
 }
 
 func (s *SessionStore) deleteExpired() error {
-	_, err := s.db.Exec("DELETE FROM sessions WHERE expiry < ?", time.Now())
+	_, err := s.db.Exec("DELETE FROM sessions WHERE expiry < ?", time.Now().UTC())
 	return err
 }
 
 // Find implements scs.Store.Find
 func (s *SessionStore) Find(token string) (b []byte, found bool, err error) {
-	row := s.db.QueryRow("SELECT data FROM sessions WHERE token = ? AND expiry > ?", token, time.Now())
+	row := s.db.QueryRow("SELECT data FROM sessions WHERE token = ? AND expiry > ?", token, time.Now().UTC())
 	var data []byte
 	if err := row.Scan(&data); err != nil {
 		if err == sql.ErrNoRows {
+			slog.Debug("session Find: no rows", "token", token[:12])
 			return nil, false, nil
 		}
+		slog.Error("session Find error", "token", token[:12], "error", err)
 		return nil, false, err
 	}
+	slog.Debug("session Find: found", "token", token[:12], "dataLen", len(data))
 	return data, true, nil
 }
 
 // Commit implements scs.Store.Commit
 func (s *SessionStore) Commit(token string, b []byte, expiry time.Time) error {
+	expiryUTC := expiry.UTC()
+	slog.Debug("session Commit", "token", token[:12], "dataLen", len(b), "expiry", expiryUTC, "expiryUnix", expiryUTC.Unix())
 	_, err := s.db.Exec(
 		"INSERT INTO sessions (token, data, expiry) VALUES (?, ?, ?) ON CONFLICT(token) DO UPDATE SET data = ?, expiry = ?",
-		token, b, expiry, b, expiry,
+		token, b, expiryUTC, b, expiryUTC,
 	)
+	if err != nil {
+		slog.Error("session Commit failed", "token", token[:12], "error", err)
+	}
 	return err
 }
 
@@ -77,7 +85,7 @@ func (s *SessionStore) Delete(token string) error {
 
 // All implements scs.Store.All (returns ALL session data, used by scs internally for some operations)
 func (s *SessionStore) All() (map[string][]byte, error) {
-	rows, err := s.db.Query("SELECT token, data FROM sessions WHERE expiry > ?", time.Now())
+	rows, err := s.db.Query("SELECT token, data FROM sessions WHERE expiry > ?", time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}

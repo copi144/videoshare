@@ -137,8 +137,10 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 
 	if model.IsPublic(resource.CategoryID) {
 		// Public/global category — auto-auth
+		tokenBefore := h.sm.Token(r.Context())
+		slog.Debug("handleShareSession before SetVideoAuth", "token", tokenBefore, "resourceID", req.ResourceID)
+
 		middleware.SetVideoAuth(r.Context(), h.sm)
-		slog.Info("resource auto-authenticated via /api/session", "id", req.ResourceID)
 
 		// If request has a Bearer token from a logged-in user, bind user data to session too
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
@@ -147,6 +149,9 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 				middleware.SetUserSession(r.Context(), h.sm, apiToken.UserID, apiToken.UserRole, apiToken.Username)
 			}
 		}
+
+		tokenAfter := h.sm.Token(r.Context())
+		slog.Debug("handleShareSession after auth", "token", tokenAfter, "hasUserID", h.sm.GetString(r.Context(), "user_id") != "", "authenticated", h.sm.GetBool(r.Context(), "authenticated"))
 
 		respondJSONOK(w, map[string]interface{}{
 			"ok":       true,
@@ -165,8 +170,10 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	tokenBefore := h.sm.Token(r.Context())
+	slog.Debug("handleShareSession before SetVideoAuth", "token", tokenBefore, "resourceID", req.ResourceID, "hasPassword", true)
+
 	middleware.SetVideoAuth(r.Context(), h.sm)
-	slog.Info("resource authenticated via /api/session", "id", req.ResourceID)
 
 	// If request has a Bearer token from a logged-in user, bind user data to session too
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
@@ -175,6 +182,9 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 			middleware.SetUserSession(r.Context(), h.sm, apiToken.UserID, apiToken.UserRole, apiToken.Username)
 		}
 	}
+
+	tokenAfter := h.sm.Token(r.Context())
+	slog.Debug("handleShareSession after auth", "token", tokenAfter, "hasUserID", h.sm.GetString(r.Context(), "user_id") != "", "authenticated", h.sm.GetBool(r.Context(), "authenticated"))
 
 	respondJSONOK(w, map[string]interface{}{
 		"ok":       true,
