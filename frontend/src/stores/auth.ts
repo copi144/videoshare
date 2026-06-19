@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { checkMe, setApiToken } from '../lib/api';
 
 export interface UserInfo {
   id: string;
@@ -8,24 +9,24 @@ export interface UserInfo {
 
 export const user = writable<UserInfo | null>(null);
 export const isAuthenticated = writable<boolean>(false);
-
-// API endpoint for checking auth
-const API_BASE = '';
+export const apiToken = writable<string | null>(null);
 
 export async function checkAuth(): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/api/me`, { credentials: 'same-origin' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.authenticated) {
-        user.set(data.user);
-        isAuthenticated.set(true);
-        return;
+    const data = await checkMe();
+    if (data.authenticated && data.user) {
+      user.set(data.user);
+      isAuthenticated.set(true);
+      if ((data as any).api_token) {
+        setApiToken((data as any).api_token);
+        apiToken.set((data as any).api_token);
       }
+    } else {
+      user.set(null);
+      isAuthenticated.set(false);
     }
-  } catch (e) {
-    // Not authenticated
+  } catch {
+    user.set(null);
+    isAuthenticated.set(false);
   }
-  user.set(null);
-  isAuthenticated.set(false);
 }

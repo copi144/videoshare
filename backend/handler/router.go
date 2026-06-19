@@ -33,6 +33,8 @@ func NewRouter(sm *scs.SessionManager,
 	rl, stop := middleware.RateLimit(60, time.Minute)
 	r.Use(rl)
 
+	r.Use(middleware.APIAuth(sm))
+
 	var stops []func()
 	stops = append(stops, stop)
 

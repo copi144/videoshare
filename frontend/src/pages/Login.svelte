@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { login } from '../lib/api';
+  import { login, setApiToken } from '../lib/api';
+  import { apiToken } from '../stores/auth';
 
   export let onSuccess: () => void;
 
@@ -14,6 +15,10 @@
     try {
       const result = await login(username, totpCode);
       if (result.ok) {
+        if ((result as any).api_token) {
+          setApiToken((result as any).api_token);
+          apiToken.set((result as any).api_token);
+        }
         onSuccess();
       } else {
         error = 'Login failed. Please check your credentials.';

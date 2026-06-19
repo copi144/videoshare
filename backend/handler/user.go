@@ -2,8 +2,10 @@ package handler
 
 import (
 	"bytes"
+	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"image/png"
@@ -65,7 +67,23 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 	middleware.SetUserSession(r.Context(), h.sm, user.ID, user.Role, user.Username)
 	slog.Info("user logged in", "username", req.Username, "role", user.Role)
 
+	// Generate API token for Bearer auth on subsequent API calls.
+	apiTokenBytes := make([]byte, 32)
+	if _, randErr := rand.Read(apiTokenBytes); randErr == nil {
+		apiToken := hex.EncodeToString(apiTokenBytes)
+		h.sm.Put(r.Context(), "api_token", apiToken)
+
+		respondJSONOK(w, map[string]interface{}{
+			"ok":        true,
+			"redirect":  "/admin",
+			"api_token": apiToken,
+		})
+		return
+	}
+
+	// Fallback: return response without api_token (still works via cookie)
 	respondJSONOK(w, map[string]interface{}{
+		"ok":       true,
 		"redirect": "/admin",
 	})
 }
@@ -74,6 +92,7 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 // POST /api/logout
 func (h *UserHandler) ServeLogoutAPI(w http.ResponseWriter, r *http.Request) {
 	middleware.ClearUserSession(r.Context(), h.sm)
+	h.sm.Remove(r.Context(), "api_token")
 	slog.Info("user logged out via API")
 	respondJSONOK(w, map[string]interface{}{
 		"redirect": "/login",
@@ -94,6 +113,9 @@ func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Return the existing api_token if set (for page refreshes / token rehydration)
+	apiToken := h.sm.GetString(r.Context(), "api_token")
+
 	respondJSONOK(w, map[string]interface{}{
 		"authenticated": true,
 		"user": map[string]string{
@@ -101,6 +123,7 @@ func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
 			"username": username,
 			"role":     userRole,
 		},
+		"api_token": apiToken,
 	})
 }
 

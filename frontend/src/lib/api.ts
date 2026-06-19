@@ -1,5 +1,15 @@
 const API_BASE = '';
 
+let _apiToken: string | null = null;
+
+export function setApiToken(token: string | null) {
+  _apiToken = token;
+}
+
+export function getApiToken(): string | null {
+  return _apiToken;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -13,6 +23,11 @@ async function request<T>(method: string, path: string, body?: any): Promise<T> 
     headers: { 'Accept': 'application/json' },
     credentials: 'same-origin',
   };
+  
+  // Add API token if available (not needed for login/share-auth which bootstrap it)
+  if (_apiToken && path !== '/api/login' && !path.startsWith('/api/s/')) {
+    (opts.headers as Record<string, string>)['Authorization'] = `Bearer ${_apiToken}`;
+  }
   
   if (body !== undefined && method !== 'GET') {
     if (body instanceof FormData) {
@@ -39,7 +54,10 @@ async function request<T>(method: string, path: string, body?: any): Promise<T> 
 
 // Auth
 export const login = (username: string, totpCode: string) =>
-  request<{ok: boolean; redirect?: string}>('POST', '/api/login', { username, totp_code: totpCode });
+  request<{ok: boolean; redirect?: string; api_token?: string}>('POST', '/api/login', { username, totp_code: totpCode });
+
+export const checkMe = () =>
+  request<{authenticated: boolean; user?: {id: string; username: string; role: string}; api_token?: string}>('GET', '/api/me');
 
 export const logout = () =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/logout');
