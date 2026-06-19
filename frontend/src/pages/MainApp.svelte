@@ -916,6 +916,7 @@
     font-size: 0.8rem;
     color: #6b7280;
     white-space: nowrap;
+    margin-left: auto;
   }
 
   .upload-password-input {
@@ -954,9 +955,10 @@
     color: #374151;
     cursor: pointer;
     white-space: nowrap;
-    max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
   }
 
   .file-input-label:hover {
