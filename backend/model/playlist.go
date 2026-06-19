@@ -133,6 +133,35 @@ func (s *PlaylistStore) ListAll() ([]*Playlist, error) {
 	return playlists, rows.Err()
 }
 
+// ListPaginated returns a page of playlists ordered by sort_order then creation date.
+func (s *PlaylistStore) ListPaginated(limit, offset int) ([]*Playlist, error) {
+	rows, err := s.db.Query(
+		"SELECT id, category_id, name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?",
+		limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var playlists []*Playlist
+	for rows.Next() {
+		p := &Playlist{}
+		if err := rows.Scan(&p.ID, &p.CategoryID, &p.Name, &p.Description, &p.CreatedBy, &p.SortOrder, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		playlists = append(playlists, p)
+	}
+	return playlists, rows.Err()
+}
+
+// Count returns the total number of playlists.
+func (s *PlaylistStore) Count() (int, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM playlists").Scan(&count)
+	return count, err
+}
+
 // GetPlaylistsForResource returns playlist IDs that a resource belongs to.
 func (s *PlaylistStore) GetPlaylistsForResource(resourceID string) ([]string, error) {
 	rows, err := s.db.Query("SELECT playlist_id FROM playlist_videos WHERE resource_id = ?", resourceID)

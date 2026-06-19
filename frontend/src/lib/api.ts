@@ -65,8 +65,17 @@ export interface ResourceDetail extends Resource {
 }
 
 // Resources
-export const listResources = () =>
-  request<{ok: boolean; resources: Resource[]}>('GET', '/api/resources');
+export const listResources = (params?: {limit?: number; offset?: number}) => {
+  let path = '/api/resources';
+  if (params) {
+    const qs = new URLSearchParams();
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    if (query) path += `?${query}`;
+  }
+  return request<{ok: boolean; resources: Resource[]; total: number; limit: number; offset: number}>('GET', path);
+};
 
 export const getResource = (id: string) =>
   request<ResourceDetail>('GET', `/api/resources/${id}`);
@@ -84,8 +93,17 @@ export const shareAuth = (id: string, password: string) =>
   request<{ok: boolean; redirect?: string}>('POST', `/api/s/${id}/auth`, { password });
 
 // Categories
-export const listCategories = () =>
-  request<{categories: any[]}>('GET', '/api/categories');
+export const listCategories = (params?: {limit?: number; offset?: number}) => {
+  let path = '/api/categories';
+  if (params) {
+    const qs = new URLSearchParams();
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    if (query) path += `?${query}`;
+  }
+  return request<{categories: any[]; total: number; limit: number; offset: number}>('GET', path);
+};
 
 export const createCategory = (name: string, description: string) =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/categories', { name, description });
@@ -97,8 +115,17 @@ export const assignUploaders = (categoryId: string, userIds: string[]) =>
   request<{ok: boolean; redirect?: string}>('POST', `/api/categories/${categoryId}/uploaders`, { user_ids: userIds });
 
 // Playlists
-export const listPlaylists = () =>
-  request<{playlists: any[]}>('GET', '/api/playlists');
+export const listPlaylists = (params?: {limit?: number; offset?: number}) => {
+  let path = '/api/playlists';
+  if (params) {
+    const qs = new URLSearchParams();
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    if (query) path += `?${query}`;
+  }
+  return request<{playlists: any[]; total: number; limit: number; offset: number}>('GET', path);
+};
 
 export const createPlaylist = (name: string, description: string, categoryId: string) =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/playlists', { name, description, category_id: categoryId });

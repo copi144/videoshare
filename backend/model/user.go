@@ -73,3 +73,10 @@ func (s *UserStore) List() ([]*User, error) {
 	}
 	return users, rows.Err()
 }
+
+// GetAdminUserID returns the ID of one admin user (used for global category bootstrap).
+func GetAdminUserID(db *sql.DB) (string, error) {
+	var id string
+	err := db.QueryRow("SELECT id FROM users WHERE role = 'admin' LIMIT 1").Scan(&id)
+	return id, err
+}

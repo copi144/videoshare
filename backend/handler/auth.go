@@ -43,7 +43,7 @@ func (h *AuthHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Global category videos are public — auto-auth and return redirect.
-	if resource.CategoryID == model.GlobalCategoryID {
+	if model.IsPublic(resource.CategoryID) {
 		middleware.SetVideoAuth(r.Context(), h.sm)
 		respondJSONOK(w, map[string]interface{}{
 			"redirect": "/s/" + id + "/watch",

@@ -17,6 +17,11 @@
   let formDescription = '';
   let loading = true;
 
+  // Pagination (local state only)
+  let limit = 50;
+  let offset = 0;
+  let total = 0;
+
   onMount(async () => {
     await loadCategories();
   });
@@ -24,8 +29,9 @@
   async function loadCategories() {
     loading = true;
     try {
-      const data = await listCategories();
+      const data = await listCategories({ limit, offset });
       categories = data.categories;
+      total = data.total;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to load categories.';
       onError?.(msg);
@@ -56,7 +62,7 @@
     }
     try {
       await deleteCategory(id);
-      categories = categories.filter(c => c.id !== id);
+      await loadCategories();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to delete category.';
       onError?.(msg);
@@ -113,4 +119,11 @@
       </tbody>
     </table>
   </figure>
+
+  <!-- Pagination -->
+  <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+    <span>{categories.length > 0 ? offset + 1 : 0}–{offset + categories.length} of {total}</span>
+    <button type="button" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadCategories(); } }} disabled={offset === 0}>Prev</button>
+    <button type="button" on:click={() => { offset += limit; loadCategories(); }} disabled={offset + categories.length >= total}>Next</button>
+  </div>
 {/if}

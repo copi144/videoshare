@@ -16,6 +16,11 @@ import (
 // Videos in this category require no password — they are publicly accessible.
 const GlobalCategoryID = "global"
 
+// IsGlobalCategoryID reports whether the given id matches the fixed GlobalCategoryID ("global").
+func IsGlobalCategoryID(id string) bool {
+	return id == GlobalCategoryID
+}
+
 // OpenDB opens a SQLite database at the given path, applies WAL mode,
 // sets connection limits, and runs auto-migration.
 func OpenDB(dataDir string) (*sql.DB, error) {
@@ -188,6 +193,32 @@ func migrate(db *sql.DB) error {
 		if _, err := db.Exec(q); err != nil {
 			return fmt.Errorf("create table: %w", err)
 		}
+	}
+
+	// Explicit performance indexes (added for pagination and list queries; idempotent)
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_created_at ON resources(created_at)"); err != nil {
+		return fmt.Errorf("create resources created_at index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_uploaded_by ON resources(uploaded_by)"); err != nil {
+		return fmt.Errorf("create resources uploaded_by index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_category_id ON resources(category_id)"); err != nil {
+		return fmt.Errorf("create resources category_id index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_transcode_status ON resources(transcode_status)"); err != nil {
+		return fmt.Errorf("create resources transcode_status index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_categories_created_at ON categories(created_at)"); err != nil {
+		return fmt.Errorf("create categories created_at index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_category_id ON playlists(category_id)"); err != nil {
+		return fmt.Errorf("create playlists category_id index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_created_at ON playlists(created_at)"); err != nil {
+		return fmt.Errorf("create playlists created_at index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_sort_order ON playlists(sort_order)"); err != nil {
+		return fmt.Errorf("create playlists sort_order index: %w", err)
 	}
 
 	return nil

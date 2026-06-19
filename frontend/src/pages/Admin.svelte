@@ -37,6 +37,11 @@
   let uploading = false;
   let copySuccess: string | null = null;
 
+  // Pagination (local state only)
+  let limit = 50;
+  let offset = 0;
+  let total = 0;
+
   function onFileChange(e: Event) {
     selectedFile = (e.target as HTMLInputElement).files?.[0] ?? null;
   }
@@ -54,10 +59,11 @@
     error = null;
     try {
       const [resData, catData] = await Promise.all([
-        listResources(),
+        listResources({ limit, offset }),
         listCategories(),
       ]);
       resources = resData.resources;
+      total = resData.total;
       categories = catData.categories;
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to load data.';
@@ -122,7 +128,7 @@
     }
     try {
       await deleteResource(id);
-      resources = resources.filter(r => r.id !== id);
+      await loadData();
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to delete resource.';
     }
@@ -206,6 +212,8 @@
 <h2>My Videos</h2>
 {#if loading}
   <p aria-busy="true">Loading videos…</p>
+{:else if resources.length === 0}
+  <p>No videos yet. Upload one above.</p>
 {:else}
   <figure>
     <table role="grid">
@@ -255,6 +263,13 @@
       </tbody>
     </table>
   </figure>
+
+  <!-- Pagination -->
+  <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+    <span>{offset + 1}–{offset + resources.length} of {total}</span>
+    <button type="button" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
+    <button type="button" on:click={() => { offset += limit; loadData(); }} disabled={offset + resources.length >= total}>Next</button>
+  </div>
 {/if}
 
 <!-- Management Sections -->

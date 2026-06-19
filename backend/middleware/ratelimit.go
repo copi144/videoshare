@@ -11,26 +11,35 @@ type visitor struct {
 	lastSeen time.Time
 }
 
-// RateLimit returns middleware that limits requests to maxCount per window duration per IP.
-func RateLimit(maxCount int, window time.Duration) func(http.Handler) http.Handler {
+// RateLimit returns middleware that limits requests to maxCount per window duration per IP,
+// along with a stop function that halts the internal cleanup goroutine.
+func RateLimit(maxCount int, window time.Duration) (func(http.Handler) http.Handler, func()) {
 	var mu sync.Mutex
 	visits := make(map[string]*visitor)
 
+	stop := make(chan struct{})
+
 	// Cleanup goroutine removes stale entries.
 	go func() {
+		ticker := time.NewTicker(window)
+		defer ticker.Stop()
 		for {
-			time.Sleep(window)
-			mu.Lock()
-			for ip, v := range visits {
-				if time.Since(v.lastSeen) > window {
-					delete(visits, ip)
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				for ip, v := range visits {
+					if time.Since(v.lastSeen) > window {
+						delete(visits, ip)
+					}
 				}
+				mu.Unlock()
+			case <-stop:
+				return
 			}
-			mu.Unlock()
 		}
 	}()
 
-	return func(next http.Handler) http.Handler {
+	mw := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := r.RemoteAddr
 
@@ -65,4 +74,7 @@ func RateLimit(maxCount int, window time.Duration) func(http.Handler) http.Handl
 			next.ServeHTTP(w, r)
 		})
 	}
+
+	stopFunc := func() { close(stop) }
+	return mw, stopFunc
 }

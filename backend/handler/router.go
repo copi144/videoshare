@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -20,7 +21,7 @@ import (
 func NewRouter(sm *scs.SessionManager,
 	resourceStore *model.ResourceStore, dataDir string, db *sql.DB,
 	userStore *model.UserStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore,
-	transcodeQueue *transcode.Queue) http.Handler {
+	transcodeQueue *transcode.Queue) (http.Handler, []func()) {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -28,7 +29,12 @@ func NewRouter(sm *scs.SessionManager,
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RealIP)
 	r.Use(sm.LoadAndSave)
-	r.Use(middleware.RateLimit(60, time.Minute))
+
+	rl, stop := middleware.RateLimit(60, time.Minute)
+	r.Use(rl)
+
+	var stops []func()
+	stops = append(stops, stop)
 
 	// Health check
 	r.Get("/health", NewHealthHandler(db).ServeHealth)
@@ -113,6 +119,10 @@ func NewRouter(sm *scs.SessionManager,
 
 	// SPA catch-all — serve the single-page application for all unmatched routes.
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			respondJSONError(w, "Not found", http.StatusNotFound)
+			return
+		}
 		spa, err := web.SPA()
 		if err != nil {
 			slog.Error("failed to read SPA", "error", err)
@@ -123,5 +133,5 @@ func NewRouter(sm *scs.SessionManager,
 		w.Write(spa)
 	})
 
-	return r
+	return r, stops
 }

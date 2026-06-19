@@ -117,6 +117,74 @@ func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
 	return resources, rows.Err()
 }
 
+// ListPaginated returns a page of resources ordered by creation date descending.
+func (s *ResourceStore) ListPaginated(limit, offset int) ([]*Resource, error) {
+	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, transcode_status, created_at, updated_at
+		FROM resources ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := s.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var resources []*Resource
+	for rows.Next() {
+		r := &Resource{}
+		if err := rows.Scan(
+			&r.ID, &r.Title, &r.PasswordHash,
+			&r.Filename, &r.FileSize, &r.ContentType,
+			&r.Views, &r.UploadedBy, &r.CategoryID,
+			&r.TranscodeStatus, &r.CreatedAt, &r.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		resources = append(resources, r)
+	}
+	return resources, rows.Err()
+}
+
+// Count returns the total number of resources.
+func (s *ResourceStore) Count() (int, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM resources").Scan(&count)
+	return count, err
+}
+
+// ListByUploaderPaginated returns a page of resources uploaded by a specific user, ordered by creation date descending.
+func (s *ResourceStore) ListByUploaderPaginated(userID string, limit, offset int) ([]*Resource, error) {
+	query := `SELECT id, title, password_hash, filename, file_size, content_type, views, uploaded_by, category_id, transcode_status, created_at, updated_at
+		FROM resources WHERE uploaded_by = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := s.db.Query(query, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var resources []*Resource
+	for rows.Next() {
+		r := &Resource{}
+		if err := rows.Scan(
+			&r.ID, &r.Title, &r.PasswordHash,
+			&r.Filename, &r.FileSize, &r.ContentType,
+			&r.Views, &r.UploadedBy, &r.CategoryID,
+			&r.TranscodeStatus, &r.CreatedAt, &r.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		resources = append(resources, r)
+	}
+	return resources, rows.Err()
+}
+
+// CountByUploader returns the total number of resources uploaded by a specific user.
+func (s *ResourceStore) CountByUploader(userID string) (int, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM resources WHERE uploaded_by = ?", userID).Scan(&count)
+	return count, err
+}
+
 // Delete removes a resource by its ID.
 func (s *ResourceStore) Delete(id string) error {
 	_, err := s.db.Exec("DELETE FROM resources WHERE id = ?", id)
@@ -125,6 +193,7 @@ func (s *ResourceStore) Delete(id string) error {
 
 // DeleteWithFile deletes a resource record and prepares for file cleanup in a transaction.
 // The fileCleanup callback is called within the transaction for atomicity.
+// Duplicate detection uses content BLAKE3 hash as the resource ID (PK). The row and files are removed on delete, freeing the hash for re-upload of identical content.
 func (s *ResourceStore) DeleteWithFile(id string, fileCleanup func() error) error {
 	tx, err := s.db.Begin()
 	if err != nil {

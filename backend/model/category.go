@@ -13,7 +13,25 @@ func IsValidName(name string) bool {
 	return validName.MatchString(name)
 }
 
+// IsGlobal reports whether the given category ID is the special Global category.
+func IsGlobal(categoryID string) bool {
+	return IsGlobalCategoryID(categoryID)
+}
+
+// IsPublic reports whether videos in this category are publicly accessible without a password.
+func IsPublic(categoryID string) bool {
+	return IsGlobal(categoryID)
+}
+
+// RequiresPassword reports whether a per-video password is required for this category.
+func RequiresPassword(categoryID string) bool {
+	return !IsGlobal(categoryID)
+}
+
 // Category represents a video category.
+//
+// Category.ID is the user-supplied validated name (slug) and is used directly as the primary key.
+// Renaming a category produces a new ID.
 type Category struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -95,6 +113,66 @@ func (s *CategoryStore) ListByUploader(userID string) ([]*Category, error) {
 		cats = append(cats, c)
 	}
 	return cats, rows.Err()
+}
+
+// ListPaginated returns a page of categories ordered by creation date descending.
+func (s *CategoryStore) ListPaginated(limit, offset int) ([]*Category, error) {
+	query := `SELECT id, name, description, created_by, created_at FROM categories ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := s.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cats []*Category
+	for rows.Next() {
+		c := &Category{}
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.CreatedBy, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		cats = append(cats, c)
+	}
+	return cats, rows.Err()
+}
+
+// Count returns the total number of categories.
+func (s *CategoryStore) Count() (int, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM categories").Scan(&count)
+	return count, err
+}
+
+// ListByUploaderPaginated returns a page of categories that a specific uploader is assigned to.
+func (s *CategoryStore) ListByUploaderPaginated(userID string, limit, offset int) ([]*Category, error) {
+	query := `SELECT c.id, c.name, c.description, c.created_by, c.created_at
+		FROM categories c
+		JOIN category_uploaders cu ON cu.category_id = c.id
+		WHERE cu.user_id = ?
+		ORDER BY c.created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := s.db.Query(query, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cats []*Category
+	for rows.Next() {
+		c := &Category{}
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.CreatedBy, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		cats = append(cats, c)
+	}
+	return cats, rows.Err()
+}
+
+// CountByUploader returns the total number of categories that a specific uploader is assigned to.
+func (s *CategoryStore) CountByUploader(userID string) (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM categories c JOIN category_uploaders cu ON cu.category_id = c.id WHERE cu.user_id = ?`, userID).Scan(&count)
+	return count, err
 }
 
 // AssignUploaders sets the uploaders for a category (replaces all existing).

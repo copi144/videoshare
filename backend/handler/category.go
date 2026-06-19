@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
@@ -79,7 +80,7 @@ func (h *CategoryHandler) DeleteCategoryAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if id == model.GlobalCategoryID {
+	if model.IsGlobal(id) {
 		respondJSONError(w, "Cannot delete the Global category", http.StatusBadRequest)
 		return
 	}
@@ -127,12 +128,47 @@ func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Reque
 	userID := middleware.GetUserID(r.Context(), h.sm)
 	userRole := middleware.GetUserRole(r.Context(), h.sm)
 
+	// Parse pagination parameters at the boundary.
+	const defaultLimit = 50
+	const maxLimit = 100
+
+	limit := defaultLimit
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			if l <= 0 {
+				limit = defaultLimit
+			} else if l > maxLimit {
+				limit = maxLimit
+			} else {
+				limit = l
+			}
+		}
+	}
+
+	offset := 0
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			if o < 0 {
+				offset = 0
+			} else {
+				offset = o
+			}
+		}
+	}
+
 	var categories []*model.Category
+	var total int
 	var err error
 	if userRole == "admin" {
-		categories, err = h.categoryStore.List()
+		categories, err = h.categoryStore.ListPaginated(limit, offset)
+		if err == nil {
+			total, err = h.categoryStore.Count()
+		}
 	} else {
-		categories, err = h.categoryStore.ListByUploader(userID)
+		categories, err = h.categoryStore.ListByUploaderPaginated(userID, limit, offset)
+		if err == nil {
+			total, err = h.categoryStore.CountByUploader(userID)
+		}
 	}
 	if err != nil {
 		slog.Error("failed to list categories", "error", err)
@@ -148,7 +184,7 @@ func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Reque
 			// Check if Global is already in the list
 			hasGlobal := false
 			for _, c := range categories {
-				if c.ID == model.GlobalCategoryID {
+				if model.IsGlobal(c.ID) {
 					hasGlobal = true
 					break
 				}
@@ -161,5 +197,8 @@ func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Reque
 
 	respondJSONOK(w, map[string]interface{}{
 		"categories": categories,
+		"total":      total,
+		"limit":      limit,
+		"offset":     offset,
 	})
 }

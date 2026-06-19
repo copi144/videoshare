@@ -27,6 +27,11 @@
   let success: string | null = null;
   let loading = true;
 
+  // Pagination (local state only)
+  let limit = 50;
+  let offset = 0;
+  let total = 0;
+
   onMount(async () => {
     await loadData();
   });
@@ -36,7 +41,7 @@
     try {
       const [catData, plData] = await Promise.all([
         listCategories(),
-        listPlaylists(),
+        listPlaylists({ limit, offset }),
       ]);
       categories = catData.categories;
       categoryMap = {};
@@ -44,6 +49,7 @@
         categoryMap[cat.id] = cat.name;
       }
       playlists = plData.playlists;
+      total = plData.total;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to load data.';
       onError?.(msg);
@@ -71,6 +77,7 @@
         formName = '';
         formDescription = '';
         formCategoryId = '';
+        await loadData();
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to create playlist.';
@@ -137,4 +144,11 @@
       {/each}
     </tbody>
   </table>
+
+  <!-- Pagination -->
+  <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+    <span>{playlists.length > 0 ? offset + 1 : 0}–{offset + playlists.length} of {total}</span>
+    <button type="button" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
+    <button type="button" on:click={() => { offset += limit; loadData(); }} disabled={offset + playlists.length >= total}>Next</button>
+  </div>
 {/if}

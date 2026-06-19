@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
@@ -161,14 +162,52 @@ func (h *PlaylistHandler) RemoveVideoAPI(w http.ResponseWriter, r *http.Request)
 // ListPlaylistsAPI returns all playlists as JSON.
 // GET /api/playlists
 func (h *PlaylistHandler) ListPlaylistsAPI(w http.ResponseWriter, r *http.Request) {
-	playlists, err := h.playlistStore.ListAll()
+	// Parse pagination parameters at the boundary.
+	const defaultLimit = 50
+	const maxLimit = 100
+
+	limit := defaultLimit
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			if l <= 0 {
+				limit = defaultLimit
+			} else if l > maxLimit {
+				limit = maxLimit
+			} else {
+				limit = l
+			}
+		}
+	}
+
+	offset := 0
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			if o < 0 {
+				offset = 0
+			} else {
+				offset = o
+			}
+		}
+	}
+
+	playlists, err := h.playlistStore.ListPaginated(limit, offset)
 	if err != nil {
 		slog.Error("failed to list playlists", "error", err)
 		respondJSONError(w, "Failed to list playlists", http.StatusInternalServerError)
 		return
 	}
 
+	total, err := h.playlistStore.Count()
+	if err != nil {
+		slog.Error("failed to count playlists", "error", err)
+		respondJSONError(w, "Failed to list playlists", http.StatusInternalServerError)
+		return
+	}
+
 	respondJSONOK(w, map[string]interface{}{
 		"playlists": playlists,
+		"total":     total,
+		"limit":     limit,
+		"offset":    offset,
 	})
 }

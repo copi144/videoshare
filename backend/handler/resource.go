@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/alexedwards/scs/v2"
@@ -74,7 +75,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	userRole := middleware.GetUserRole(r.Context(), h.sm)
 
 	// Non-admin users: verify authorization for non-global categories.
-	if userRole != "admin" && categoryID != model.GlobalCategoryID {
+	if userRole != "admin" && model.RequiresPassword(categoryID) {
 		authorized, authErr := h.categoryStore.IsUploaderAuthorized(userID, categoryID)
 		if authErr != nil {
 			slog.Error("failed to check category authorization", "error", authErr)
@@ -93,7 +94,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		hash []byte
 		err  error
 	)
-	if categoryID == model.GlobalCategoryID {
+	if model.IsPublic(categoryID) {
 		hash = nil // public video, no password hashing
 	} else {
 		if password == "" {
@@ -145,6 +146,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	hashHex := hex.EncodeToString(hashWriter.Sum(nil))
 
 	// Check for duplicate content by hash.
+	// Duplicate detection uses content BLAKE3 hash as the resource ID (PK). The row and files are removed on delete, freeing the hash for re-upload of identical content.
 	existing, err := h.store.GetByID(hashHex)
 	if err == nil && existing != nil {
 		respondError(w, r, http.StatusConflict, "File already exists: "+existing.ID)
@@ -225,12 +227,47 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 	userRole := middleware.GetUserRole(r.Context(), h.sm)
 	userID := middleware.GetUserID(r.Context(), h.sm)
 
+	// Parse pagination parameters at the boundary.
+	const defaultLimit = 50
+	const maxLimit = 100
+
+	limit := defaultLimit
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			if l <= 0 {
+				limit = defaultLimit
+			} else if l > maxLimit {
+				limit = maxLimit
+			} else {
+				limit = l
+			}
+		}
+	}
+
+	offset := 0
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil {
+			if o < 0 {
+				offset = 0
+			} else {
+				offset = o
+			}
+		}
+	}
+
 	var resources []*model.Resource
+	var total int
 	var err error
 	if userRole == "admin" {
-		resources, err = h.store.List()
+		resources, err = h.store.ListPaginated(limit, offset)
+		if err == nil {
+			total, err = h.store.Count()
+		}
 	} else {
-		resources, err = h.store.ListByUploader(userID)
+		resources, err = h.store.ListByUploaderPaginated(userID, limit, offset)
+		if err == nil {
+			total, err = h.store.CountByUploader(userID)
+		}
 	}
 	if err != nil {
 		slog.Error("failed to list resources", "error", err)
@@ -245,6 +282,9 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 
 	respondJSONOK(w, map[string]interface{}{
 		"resources": resources,
+		"total":     total,
+		"limit":     limit,
+		"offset":    offset,
 	})
 }
 
@@ -262,6 +302,17 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		slog.Error("failed to get resource", "id", id, "error", err)
 		respondJSONError(w, "Resource not found", http.StatusNotFound)
 		return
+	}
+
+	// Per-session view guard (primary watch signal at GetResourceAPI).
+	// Uses 24h SCS session lifetime; prevents double-count on repeated fetches.
+	if !h.sm.GetBool(r.Context(), "viewed:"+id) {
+		h.sm.Put(r.Context(), "viewed:"+id, true)
+		go func() {
+			if err := h.store.IncrementViews(id); err != nil {
+				slog.Error("increment views failed", "id", id, "error", err)
+			}
+		}()
 	}
 
 	// Sanitize — never expose password hash.
@@ -319,6 +370,7 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Delete frees the BLAKE3 hash (PK) so identical content can be re-uploaded later.
 	err = h.store.DeleteWithFile(id, func() error {
 		if err := os.RemoveAll(hashDir); err != nil && !os.IsNotExist(err) {
 			return err

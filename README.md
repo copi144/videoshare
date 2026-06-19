@@ -17,8 +17,7 @@ categories, and playlists — written in Go.
   management page
 - **Password-protected sharing** — per-video passwords for share links
 - **MP4 streaming** — HTTP range requests for efficient video delivery
-- **Rate limiting** — global (60 req/min/IP) and strict for share pages
-  (5 req/min/IP)
+- **Rate limiting** — global 60 requests per minute per IP (applies uniformly to all routes)
 - **SQLite storage** — no external database required; WAL mode for concurrency
 - **Docker support** — multi-stage build, minimal alpine runtime image
 
@@ -120,6 +119,9 @@ services:
 |--------|------|------|-------------|
 | GET | `/` | — | Redirects to `/admin` |
 | GET | `/admin` | User | Main management page (videos, upload form, categories, playlists, unassigned videos) |
+| GET | `/api/resources` | User | List resources (paginated). Query: `?limit=` (default 50, max 100), `?offset=`. Response includes `total`, `limit`, `offset`. |
+| GET | `/api/categories` | User | List categories (paginated). Same query params. Response includes `total`, `limit`, `offset`. For non-admin users the Global category is prepended if not already present (page may contain up to `limit+1` items); `total` reflects the count before the prepend. |
+| GET | `/api/playlists` | Admin | List playlists (paginated). Same query params. Response includes `total`, `limit`, `offset`. |
 | POST | `/api/upload` | User | Upload video (multipart: `file`, `title`, `description`, `password`, `category_id`) |
 | POST | `/api/resource/{id}` | User | Delete video (uses `_method=DELETE`; uploaders can only delete their own) |
 | POST | `/logout` | User | Logout |
@@ -156,8 +158,8 @@ services:
    `uploader` users can only upload videos to their assigned categories and
    delete videos they own.
 6. Video files are stored in `DATA_DIR/videos/` — protect this directory.
-7. The server has built-in rate limiting: 60 requests/minute/IP globally,
-   5 password attempts/minute/IP on share pages.
+7. The server has built-in rate limiting: 60 requests/minute per IP globally
+   (a single limit applies to all routes, including share authentication endpoints).
 
 ## Tech Stack
 

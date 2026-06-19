@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -28,7 +31,7 @@ func main() {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	// db.Close() called explicitly in ordered shutdown (srv first)
 
 	// Bootstrap admin user on first run — generates TOTP key.
 	totpURI, err := model.BootstrapAdmin(db, cfg.AdminUsername)
@@ -51,8 +54,7 @@ func main() {
 	}
 
 	// Bootstrap the global category (public/no-password videos).
-	var globalAdminID string
-	err = db.QueryRow("SELECT id FROM users WHERE role = 'admin' LIMIT 1").Scan(&globalAdminID)
+	globalAdminID, err := model.GetAdminUserID(db)
 	if err != nil {
 		slog.Error("failed to lookup admin user ID for global category bootstrap", "error", err)
 	} else {
@@ -62,7 +64,7 @@ func main() {
 	}
 
 	sessStore := model.NewSessionStore(db)
-	defer sessStore.StopCleanup()
+	// sessStore.StopCleanup() called explicitly in ordered shutdown (srv first)
 
 	sm := scs.New()
 	sm.Store = sessStore
@@ -79,17 +81,59 @@ func main() {
 	// Initialize transcode queue with access to the resource store for status updates.
 	tc := transcode.LoadTranscodeConfig()
 	tq := transcode.NewQueue(tc, resourceStore)
-	defer tq.Shutdown()
+	// tq.Shutdown() called explicitly in ordered shutdown (srv first)
 
 	// Reset stalled 'processing' jobs to 'pending' on startup.
 	transcode.StartupRecovery(resourceStore)
 
-	router := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, tq)
+	router, rateLimitStops := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, tq)
 
 	addr := cfg.Addr
+	srv := &http.Server{Addr: addr, Handler: router}
+
 	slog.Info("starting server", "addr", addr)
-	if err := http.ListenAndServe(addr, router); err != nil {
-		slog.Error("server error", "error", err)
-		os.Exit(1)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	listenErrCh := make(chan error, 1)
+	go func() {
+		listenErrCh <- srv.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		slog.Info("shutdown signal received")
+		stop()
+
+		// ordered shutdown (srv first per spec)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("server shutdown error", "error", err)
+		}
+		cancel()
+
+		tq.Shutdown()
+		sessStore.StopCleanup()
+		for _, stopFn := range rateLimitStops {
+			stopFn()
+		}
+		db.Close()
+
+		slog.Info("shutdown complete")
+	case err := <-listenErrCh:
+		if err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "error", err)
+		}
+		// run ordered cleanup on early listen error (e.g. bind) so we exit cleanly
+		tq.Shutdown()
+		sessStore.StopCleanup()
+		for _, stopFn := range rateLimitStops {
+			stopFn()
+		}
+		db.Close()
+		if err != nil && err != http.ErrServerClosed {
+			os.Exit(1)
+		}
 	}
 }
