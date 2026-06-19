@@ -194,6 +194,13 @@ func migrate(db *sql.DB) error {
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (playlist_id, resource_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS api_tokens (
+			token TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			user_role TEXT NOT NULL,
+			username TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 	}
 
 	for _, q := range tables {
@@ -232,6 +239,9 @@ func migrate(db *sql.DB) error {
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_sort_order ON playlists(sort_order)"); err != nil {
 		return fmt.Errorf("create playlists sort_order index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_api_tokens_created_at ON api_tokens(created_at)"); err != nil {
+		return fmt.Errorf("create api_tokens created_at index: %w", err)
 	}
 
 	return nil

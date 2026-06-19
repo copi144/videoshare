@@ -33,7 +33,7 @@ func NewRouter(sm *scs.SessionManager,
 	rl, stop := middleware.RateLimit(60, time.Minute)
 	r.Use(rl)
 
-	r.Use(middleware.APIAuth(sm))
+	r.Use(middleware.APIAuth(db))
 
 	var stops []func()
 	stops = append(stops, stop)
@@ -54,7 +54,7 @@ func NewRouter(sm *scs.SessionManager,
 	})
 
 	// Create handlers with dependency injection.
-	userH := NewUserHandler(userStore, sm)
+	userH := NewUserHandler(userStore, sm, db)
 	authH := NewAuthHandler(resourceStore, sm)
 	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, sm, userStore, playlistStore, transcodeQueue, ffmpegPath)
 	streamH := NewStreamHandler(resourceStore, dataDir)

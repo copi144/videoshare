@@ -14,6 +14,23 @@ const (
 	sessionUsernameKey      = "user_username"
 )
 
+type ctxKey string
+
+const (
+	ctxUserID   ctxKey = "ctx_user_id"
+	ctxUserRole ctxKey = "ctx_user_role"
+	ctxUsername ctxKey = "ctx_username"
+)
+
+// SetUserContext returns a new context with user identity values set.
+// This is used by APIAuth to propagate user info without relying on the session.
+func SetUserContext(ctx context.Context, userID, role, username string) context.Context {
+	ctx = context.WithValue(ctx, ctxUserID, userID)
+	ctx = context.WithValue(ctx, ctxUserRole, role)
+	ctx = context.WithValue(ctx, ctxUsername, username)
+	return ctx
+}
+
 // RequireVideoAuth returns middleware that protects video watch routes behind
 // a valid video-password-authenticated session. If the "authenticated" key is
 // not present in the session, the user is redirected to the share page.
@@ -35,7 +52,7 @@ func RequireVideoAuth(sm *scs.SessionManager) func(http.Handler) http.Handler {
 func RequireUserOrVideoAuth(sm *scs.SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID := sm.GetString(r.Context(), sessionUserIDKey)
+			userID := GetUserID(r.Context(), sm)
 			videoAuth := sm.GetBool(r.Context(), sessionAuthenticatedKey)
 			if userID == "" && !videoAuth {
 				http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -65,21 +82,30 @@ func ClearUserSession(ctx context.Context, sm *scs.SessionManager) {
 	sm.Remove(ctx, sessionUsernameKey)
 }
 
-// GetUserID returns the authenticated user's ID from the session.
+// GetUserID returns the authenticated user's ID, checking context first, then session.
 // Returns empty string if not set.
 func GetUserID(ctx context.Context, sm *scs.SessionManager) string {
+	if id, ok := ctx.Value(ctxUserID).(string); ok && id != "" {
+		return id
+	}
 	return sm.GetString(ctx, sessionUserIDKey)
 }
 
-// GetUserRole returns the authenticated user's role from the session.
+// GetUserRole returns the authenticated user's role, checking context first, then session.
 // Returns empty string if not set.
 func GetUserRole(ctx context.Context, sm *scs.SessionManager) string {
+	if role, ok := ctx.Value(ctxUserRole).(string); ok && role != "" {
+		return role
+	}
 	return sm.GetString(ctx, sessionUserRoleKey)
 }
 
-// GetUsername returns the authenticated user's username from the session.
+// GetUsername returns the authenticated user's username, checking context first, then session.
 // Returns empty string if not set.
 func GetUsername(ctx context.Context, sm *scs.SessionManager) string {
+	if name, ok := ctx.Value(ctxUsername).(string); ok && name != "" {
+		return name
+	}
 	return sm.GetString(ctx, sessionUsernameKey)
 }
 

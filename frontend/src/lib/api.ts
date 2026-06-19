@@ -4,6 +4,11 @@ let _apiToken: string | null = null;
 
 export function setApiToken(token: string | null) {
   _apiToken = token;
+  if (token) {
+    localStorage.setItem('videoshare_api_token', token);
+  } else {
+    localStorage.removeItem('videoshare_api_token');
+  }
 }
 
 export function getApiToken(): string | null {
@@ -172,3 +177,9 @@ export const createUser = (username: string) =>
   request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { username });
 
 // Me
+
+// Restore API token from localStorage on module load
+const saved = localStorage.getItem('videoshare_api_token');
+if (saved) {
+  setApiToken(saved);
+}

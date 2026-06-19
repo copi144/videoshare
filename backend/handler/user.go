@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/pquerna/otp/totp"
@@ -24,11 +25,12 @@ import (
 type UserHandler struct {
 	userStore *model.UserStore
 	sm        *scs.SessionManager
+	db        *sql.DB
 }
 
 // NewUserHandler creates a new UserHandler with injected dependencies.
-func NewUserHandler(userStore *model.UserStore, sm *scs.SessionManager) *UserHandler {
-	return &UserHandler{userStore: userStore, sm: sm}
+func NewUserHandler(userStore *model.UserStore, sm *scs.SessionManager, db *sql.DB) *UserHandler {
+	return &UserHandler{userStore: userStore, sm: sm, db: db}
 }
 
 // ServeLoginAPI handles JSON login requests.
@@ -71,7 +73,11 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 	apiTokenBytes := make([]byte, 32)
 	if _, randErr := rand.Read(apiTokenBytes); randErr == nil {
 		apiToken := hex.EncodeToString(apiTokenBytes)
-		h.sm.Put(r.Context(), "api_token", apiToken)
+
+		// Store in api_tokens table for cookie-free API auth
+		if dbErr := model.SaveAPIToken(h.db, apiToken, user.ID, user.Role, user.Username); dbErr != nil {
+			slog.Error("failed to save API token", "error", dbErr)
+		}
 
 		respondJSONOK(w, map[string]interface{}{
 			"ok":        true,
@@ -81,7 +87,6 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fallback: return response without api_token (still works via cookie)
 	respondJSONOK(w, map[string]interface{}{
 		"ok":       true,
 		"redirect": "/admin",
@@ -91,6 +96,15 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 // ServeLogoutAPI handles JSON logout requests.
 // POST /api/logout
 func (h *UserHandler) ServeLogoutAPI(w http.ResponseWriter, r *http.Request) {
+	// Delete API token from DB
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if err := model.DeleteAPIToken(h.db, token); err != nil {
+			slog.Error("failed to delete API token", "error", err)
+		}
+	}
+
 	middleware.ClearUserSession(r.Context(), h.sm)
 	h.sm.Remove(r.Context(), "api_token")
 	slog.Info("user logged out via API")
@@ -113,9 +127,6 @@ func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return the existing api_token if set (for page refreshes / token rehydration)
-	apiToken := h.sm.GetString(r.Context(), "api_token")
-
 	respondJSONOK(w, map[string]interface{}{
 		"authenticated": true,
 		"user": map[string]string{
@@ -123,7 +134,6 @@ func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
 			"username": username,
 			"role":     userRole,
 		},
-		"api_token": apiToken,
 	})
 }
 

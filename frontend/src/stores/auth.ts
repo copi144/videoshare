@@ -15,17 +15,21 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 export async function checkAuth(): Promise<void> {
   try {
+    // Restore api_token from localStorage for Bearer auth on /api/me
+    const savedToken = localStorage.getItem('videoshare_api_token');
+    if (savedToken) {
+      setApiToken(savedToken);
+      apiToken.set(savedToken);
+    }
+
     const data = await checkMe();
     if (data.authenticated && data.user) {
       user.set(data.user);
       isAuthenticated.set(true);
-      if ((data as any).api_token) {
-        setApiToken((data as any).api_token);
-        apiToken.set((data as any).api_token);
-      }
     } else {
       user.set(null);
       isAuthenticated.set(false);
+      localStorage.removeItem('videoshare_api_token');
     }
   } catch {
     user.set(null);
