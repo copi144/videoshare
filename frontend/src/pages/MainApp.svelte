@@ -694,7 +694,6 @@
     align-items: center;
     padding: 0.25rem 0;
     margin-bottom: 0;
-    border-bottom: 1px solid #e5e7eb;
   }
 
   .tab-group {
