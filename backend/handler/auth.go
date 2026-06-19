@@ -51,7 +51,7 @@ func (h *AuthHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Request) {
 	if model.IsPublic(resource.CategoryID) {
 		middleware.SetVideoAuth(r.Context(), h.sm)
 		respondJSONOK(w, map[string]interface{}{
-			"redirect": "/s/" + id + "/watch",
+			"redirect": "/v/" + id + "/watch",
 		})
 		return
 	}
@@ -74,6 +74,6 @@ func (h *AuthHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("resource authenticated via API", "id", id)
 	respondJSONOK(w, map[string]interface{}{
-		"redirect": "/s/" + id + "/watch",
+		"redirect": "/v/" + id + "/watch",
 	})
 }

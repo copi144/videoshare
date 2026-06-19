@@ -58,7 +58,7 @@
         }
       } else {
         // Fall back to original file
-        videoRef.src = `/v/${videoId}`;
+        videoRef.src = `/v/${videoId}/raw`;
       }
     }
   }

@@ -118,7 +118,7 @@ func NewRouter(sm *scs.SessionManager,
 	})
 
 	// Video streaming — accessible by both system users and share-link viewers
-	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}", streamH.ServeVideo)
+	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}/raw", streamH.ServeVideo)
 
 	// HLS streaming — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}/hls/*", streamH.ServeHLS)
