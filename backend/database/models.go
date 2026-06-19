@@ -49,6 +49,7 @@ type Resource struct {
 	UploadedBy      sql.NullString
 	CategoryID      sql.NullString
 	TranscodeStatus string
+	Banned          int64
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

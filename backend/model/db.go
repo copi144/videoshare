@@ -136,10 +136,12 @@ func migrate(db *sql.DB) error {
 	}
 
 	// Add new columns to resources table (idempotent — errors are expected if columns exist)
-	columns := []string{"uploaded_by", "category_id", "transcode_status"}
+	columns := []string{"uploaded_by", "category_id", "transcode_status", "banned"}
 	for _, col := range columns {
 		var def string
 		switch col {
+		case "banned":
+			def = "INTEGER NOT NULL DEFAULT 0"
 		case "transcode_status":
 			def = "TEXT NOT NULL DEFAULT 'none'"
 		case "category_id":
@@ -210,6 +212,9 @@ func migrate(db *sql.DB) error {
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_transcode_status ON resources(transcode_status)"); err != nil {
 		return fmt.Errorf("create resources transcode_status index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_banned ON resources(banned)"); err != nil {
+		return fmt.Errorf("create resources banned index: %w", err)
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_categories_created_at ON categories(created_at)"); err != nil {
 		return fmt.Errorf("create categories created_at index: %w", err)

@@ -9,6 +9,7 @@ CREATE TABLE resources (
     uploaded_by TEXT,
     category_id TEXT,
     transcode_status TEXT NOT NULL DEFAULT 'none',
+    banned INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

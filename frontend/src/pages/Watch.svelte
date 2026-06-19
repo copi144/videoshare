@@ -21,6 +21,7 @@
     category_id: string;
     category_name: string;
     transcode_status?: string;
+    banned?: boolean;
   }
 
   let resource: ResourceInfo | null = null;
@@ -86,6 +87,8 @@
   <p aria-busy="true">Loading video…</p>
 {:else if error}
   <article class="error-box">{error}</article>
+{:else if resource.banned}
+  <article class="error-box">This video has been banned.</article>
 {:else if resource}
   <h2>{resource.title}</h2>
   <article>

@@ -42,6 +42,11 @@ func (h *AuthHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if resource.Banned {
+		respondJSONError(w, "This video has been banned", http.StatusGone)
+		return
+	}
+
 	// Global category videos are public — auto-auth and return redirect.
 	if model.IsPublic(resource.CategoryID) {
 		middleware.SetVideoAuth(r.Context(), h.sm)

@@ -70,6 +70,8 @@ func NewRouter(sm *scs.SessionManager,
 		r.Post("/api/upload", resourceH.Upload)
 		r.Put("/api/resources/{id}/readme", resourceH.UpdateReadme)
 		r.Delete("/api/resource/{id}", resourceH.DeleteResourceAPI)
+		r.Post("/api/resources/{id}/retranscode", resourceH.Retranscode)
+		r.Post("/api/resources/{id}/ban", resourceH.BanResource)
 
 		// JSON API routes that require auth
 		r.Get("/api/resources", resourceH.ListResourcesAPI)

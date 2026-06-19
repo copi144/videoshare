@@ -17,6 +17,17 @@ import (
 func (h *StreamHandler) ServeHLS(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
+	// Check if resource is banned
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		http.Error(w, "Resource not found", http.StatusNotFound)
+		return
+	}
+	if resource.Banned {
+		http.Error(w, "This video has been banned", http.StatusGone)
+		return
+	}
+
 	// Get the wildcard path after /hls/.
 	wildcard := chi.RouteContext(r.Context()).URLParam("*")
 	if wildcard == "" {
@@ -61,6 +72,17 @@ func NewStreamHandler(store *model.ResourceStore, dataDir string) *StreamHandler
 // GET /api/video/{id}
 func (h *StreamHandler) ServeVideo(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	// Check if resource is banned
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		http.Error(w, "Resource not found", http.StatusNotFound)
+		return
+	}
+	if resource.Banned {
+		http.Error(w, "This video has been banned", http.StatusGone)
+		return
+	}
 
 	// Reconstruct paths using storage helpers.
 	originalPath := storage.OriginalPath(h.dataDir, id)

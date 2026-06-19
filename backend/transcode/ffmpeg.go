@@ -100,7 +100,7 @@ func BuildHLSCommand(cfg *TranscodeConfig, inputPath, outputDir string, qualitie
 	// HLS parameters.
 	args = append(args,
 		"-var_stream_map", varStreamMap,
-		"-hls_time", "4",
+		"-hls_time", "6",
 		"-hls_playlist_type", "vod",
 		"-hls_flags", "independent_segments",
 		"-hls_segment_filename", filepath.Join(outputDir, "%v", "%04d.ts"),

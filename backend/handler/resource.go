@@ -149,6 +149,10 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	// Duplicate detection uses content BLAKE3 hash as the resource ID (PK). The row and files are removed on delete, freeing the hash for re-upload of identical content.
 	existing, err := h.store.GetByID(hashHex)
 	if err == nil && existing != nil {
+		if existing.Banned {
+			respondError(w, r, http.StatusConflict, "This file has been banned and cannot be re-uploaded")
+			return
+		}
 		respondError(w, r, http.StatusConflict, "File already exists: "+existing.ID)
 		return
 	}
@@ -280,6 +284,17 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 		res.PasswordHash = ""
 	}
 
+	// Filter banned resources for non-admin users
+	if userRole != "admin" {
+		filtered := make([]*model.Resource, 0, len(resources))
+		for _, res := range resources {
+			if !res.Banned {
+				filtered = append(filtered, res)
+			}
+		}
+		resources = filtered
+	}
+
 	respondJSONOK(w, map[string]interface{}{
 		"resources": resources,
 		"total":     total,
@@ -333,6 +348,7 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		"file_size":        resource.FileSize,
 		"content_type":     resource.ContentType,
 		"views":            resource.Views,
+		"banned":           resource.Banned,
 		"transcode_status": resource.TranscodeStatus,
 		"created_at":       resource.CreatedAt,
 		"updated_at":       resource.UpdatedAt,
@@ -421,5 +437,112 @@ func (h *ResourceHandler) UpdateReadme(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	respondJSONOK(w, map[string]interface{}{"ok": true})
+}
+
+// Retranscode triggers re-transcoding of a video.
+// POST /api/resources/{id}/retranscode
+func (h *ResourceHandler) Retranscode(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		respondError(w, r, http.StatusNotFound, "Resource not found")
+		return
+	}
+
+	if resource.Banned {
+		respondError(w, r, http.StatusGone, "This video has been banned")
+		return
+	}
+
+	// Check ownership
+	userID := middleware.GetUserID(r.Context(), h.sm)
+	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	if userRole != "admin" && resource.UploadedBy != userID {
+		respondError(w, r, http.StatusForbidden, "You can only retranscode your own videos")
+		return
+	}
+
+	// Check if transcode is already in progress
+	if resource.TranscodeStatus == "processing" {
+		respondError(w, r, http.StatusConflict, "Transcode already in progress")
+		return
+	}
+
+	// Set status to pending and submit job
+	if err := h.store.UpdateTranscodeStatus(id, "pending"); err != nil {
+		slog.Error("failed to update transcode status", "id", id, "error", err)
+		respondError(w, r, http.StatusInternalServerError, "Failed to start transcode")
+		return
+	}
+
+	h.transcodeQueue.Submit(transcode.Job{
+		ResourceID: id,
+		InputPath:  storage.OriginalPath(h.dataDir, id),
+		OutputDir:  storage.HLSPath(h.dataDir, id),
+	})
+
+	slog.Info("retranscode triggered", "id", id)
+	respondJSONOK(w, map[string]interface{}{"ok": true})
+}
+
+// BanResource bans a video: deletes video data from disk, prevents re-upload.
+// POST /api/resources/{id}/ban
+func (h *ResourceHandler) BanResource(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	// Admin only check
+	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	if userRole != "admin" {
+		respondError(w, r, http.StatusForbidden, "Admin access required")
+		return
+	}
+
+	resource, err := h.store.GetByID(id)
+	if err != nil {
+		respondError(w, r, http.StatusNotFound, "Resource not found")
+		return
+	}
+
+	if resource.Banned {
+		respondError(w, r, http.StatusConflict, "Video is already banned")
+		return
+	}
+
+	// Delete video data from disk (original file + HLS output + readme).
+	// Preserve the DB record.
+
+	// Remove original video file
+	originalPath := storage.OriginalPath(h.dataDir, id)
+	if err := os.Remove(originalPath); err != nil && !os.IsNotExist(err) {
+		slog.Error("failed to remove original file during ban", "id", id, "error", err)
+	}
+
+	// Remove HLS output
+	hlsDir := storage.HLSPath(h.dataDir, id)
+	if err := os.RemoveAll(hlsDir); err != nil && !os.IsNotExist(err) {
+		slog.Error("failed to remove HLS dir during ban", "id", id, "error", err)
+	}
+
+	// Remove readme file
+	readmePath := storage.ReadmePath(h.dataDir, id)
+	if err := os.Remove(readmePath); err != nil && !os.IsNotExist(err) {
+		slog.Error("failed to remove readme during ban", "id", id, "error", err)
+	}
+
+	// Set banned flag in DB (preserves metadata + readme on disk)
+	if err := h.store.SetBanned(id, true); err != nil {
+		slog.Error("failed to set banned flag", "id", id, "error", err)
+		respondError(w, r, http.StatusInternalServerError, "Failed to ban video")
+		return
+	}
+
+	// Update transcode status to 'none' since data is gone
+	if err := h.store.UpdateTranscodeStatus(id, "none"); err != nil {
+		slog.Error("failed to update transcode status after ban", "id", id, "error", err)
+	}
+
+	slog.Info("resource banned", "id", id, "title", resource.Title)
 	respondJSONOK(w, map[string]interface{}{"ok": true})
 }

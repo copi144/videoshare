@@ -21,6 +21,7 @@ type Resource struct {
 	UploadedBy       string    `json:"uploaded_by"`
 	CategoryID       string    `json:"category_id"`
 	TranscodeStatus  string    `json:"transcode_status"`
+	Banned           bool      `json:"banned"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -69,6 +70,7 @@ func (s *ResourceStore) GetByID(id string) (*Resource, error) {
 		UploadedBy:      r.UploadedBy.String,
 		CategoryID:      r.CategoryID.String,
 		TranscodeStatus: r.TranscodeStatus,
+		Banned:          r.Banned != 0,
 		CreatedAt:       r.CreatedAt,
 		UpdatedAt:       r.UpdatedAt,
 	}, nil
@@ -94,6 +96,7 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 			UploadedBy:      r.UploadedBy.String,
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
+			Banned:          r.Banned != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -121,6 +124,7 @@ func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
 			UploadedBy:      r.UploadedBy.String,
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
+			Banned:          r.Banned != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -151,6 +155,7 @@ func (s *ResourceStore) ListPaginated(limit, offset int) ([]*Resource, error) {
 			UploadedBy:      r.UploadedBy.String,
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
+			Banned:          r.Banned != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -189,6 +194,7 @@ func (s *ResourceStore) ListByUploaderPaginated(userID string, limit, offset int
 			UploadedBy:      r.UploadedBy.String,
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
+			Banned:          r.Banned != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})
@@ -243,6 +249,19 @@ func (s *ResourceStore) UpdateTranscodeStatus(id, status string) error {
 	})
 }
 
+// SetBanned sets the banned status for a resource.
+func (s *ResourceStore) SetBanned(id string, banned bool) error {
+	ctx := context.Background()
+	bannedInt := int64(0)
+	if banned {
+		bannedInt = 1
+	}
+	return s.q.UpdateResourceBanned(ctx, database.UpdateResourceBannedParams{
+		Banned: bannedInt,
+		ID:     id,
+	})
+}
+
 // ListByTranscodeStatus returns all resources with the given transcode status.
 func (s *ResourceStore) ListByTranscodeStatus(status string) ([]*Resource, error) {
 	ctx := context.Background()
@@ -263,6 +282,7 @@ func (s *ResourceStore) ListByTranscodeStatus(status string) ([]*Resource, error
 			UploadedBy:      r.UploadedBy.String,
 			CategoryID:      r.CategoryID.String,
 			TranscodeStatus: r.TranscodeStatus,
+			Banned:          r.Banned != 0,
 			CreatedAt:       r.CreatedAt,
 			UpdatedAt:       r.UpdatedAt,
 		})

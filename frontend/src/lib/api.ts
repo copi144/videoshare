@@ -52,6 +52,7 @@ export interface Resource {
   file_size: number;
   content_type: string;
   views: number;
+  banned?: boolean;
   created_at: string;
   updated_at: string;
   uploaded_by: string;
@@ -85,6 +86,12 @@ export const uploadVideo = (formData: FormData) =>
 
 export const deleteResource = (id: string) =>
   request<{ok: boolean}>('DELETE', `/api/resource/${id}`);
+
+export const retranscode = (id: string) =>
+  request<{ok: boolean}>('POST', `/api/resources/${id}/retranscode`);
+
+export const banResource = (id: string) =>
+  request<{ok: boolean}>('POST', `/api/resources/${id}/ban`);
 
 export const updateReadme = (resourceId: string, readme: string) =>
   request<{ok: boolean}>('PUT', `/api/resources/${resourceId}/readme`, { readme });

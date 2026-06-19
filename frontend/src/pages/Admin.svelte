@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listResources, uploadVideo, deleteResource, listCategories } from '../lib/api';
+  import { listResources, uploadVideo, deleteResource, retranscode, banResource, listCategories } from '../lib/api';
   import Categories from './Categories.svelte';
   import Playlists from './Playlists.svelte';
   import Users from './Users.svelte';
@@ -19,6 +19,7 @@
     category_id: string;
     category_name: string;
     transcode_status?: string;
+    banned?: boolean;
   }
 
   interface Category {
@@ -134,6 +135,27 @@
     }
   }
 
+  async function handleRetranscode(id: string) {
+    try {
+      await retranscode(id);
+      await loadData();
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Failed to retranscode video.';
+    }
+  }
+
+  async function handleBan(id: string) {
+    if (!confirm('Are you sure you want to ban this video? This will delete the video data and prevent re-upload of the same file.')) {
+      return;
+    }
+    try {
+      await banResource(id);
+      await loadData();
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Failed to ban resource.';
+    }
+  }
+
   function copyShareLink(id: string) {
     const url = `${window.location.origin}/s/${id}`;
     navigator.clipboard.writeText(url).then(() => {
@@ -234,7 +256,9 @@
             <td>{res.title}</td>
             <td>{res.category_name}</td>
             <td>
-              {#if res.transcode_status === 'done'}
+              {#if res.banned}
+                <span style="color: red; font-weight: bold;">Banned</span>
+              {:else if res.transcode_status === 'done'}
                 <span style="color: var(--primary);">Ready</span>
               {:else if res.transcode_status === 'processing'}
                 <span style="color: var(--warning);" aria-busy="true">Processing</span>
@@ -254,6 +278,14 @@
               </button>
             </td>
             <td>
+              <button class="outline" type="button" on:click={() => handleRetranscode(res.id)}>
+                Re-transcode
+              </button>
+              {#if !res.banned}
+                <button class="outline secondary" type="button" on:click={() => handleBan(res.id)}>
+                  Ban
+                </button>
+              {/if}
               <button class="outline secondary" type="button" on:click={() => handleDelete(res.id)}>
                 Delete
               </button>
