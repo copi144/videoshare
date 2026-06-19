@@ -128,20 +128,23 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Detect resource type from MIME content type.
-	contentType := header.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "video/mp4" // default for multipart without explicit Content-Type
-	}
-	resourceType := upload.DetectResourceType(contentType)
-	if resourceType == "" {
-		// Fallback: detect by file extension
-		resourceType = upload.DetectResourceTypeByExtension(header.Filename)
-	}
-	if resourceType == "" {
-		slog.Error("unsupported content type", "content_type", contentType, "filename", header.Filename)
-		respondJSONError(w, "Unsupported file type", http.StatusBadRequest)
+	// Detect resource type from magic bytes (never use file extension).
+	contentType, resourceType, detectErr := upload.DetectMIMEAndResourceType(file)
+	if detectErr != nil || resourceType == "" {
+		slog.Error("file type detection failed", "error", detectErr, "filename", header.Filename)
+		respondJSONError(w, "Unable to detect file type. Supported formats: MP4, WebM, MKV, MOV, AVI, MP3, M4A, WAV, OGG, FLAC, AAC, JPEG, PNG, WebP, GIF", http.StatusBadRequest)
 		return
+	}
+
+	// Auto-correct filename extension to match detected MIME type.
+	correctedFilename := upload.CorrectExtension(header.Filename, contentType)
+	if correctedFilename != header.Filename {
+		slog.Info("auto-corrected filename extension",
+			"original", header.Filename,
+			"corrected", correctedFilename,
+			"detected_mime", contentType,
+		)
+		header.Filename = correctedFilename
 	}
 
 	// Save to temp file while computing BLAKE3 hash via TeeReader.
