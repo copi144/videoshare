@@ -87,6 +87,19 @@
   let uploading = false;
   let copySuccess: string | null = null;
 
+  // --- File type filter ---
+  let fileTypeFilter: '' | 'video' | 'audio' | 'image' = '';
+
+  const videoAccept = 'video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv';
+  const audioAccept = 'audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,audio/aac';
+  const imageAccept = 'image/jpeg,image/png,image/webp,image/gif';
+  const allAccept = `${videoAccept},${audioAccept},${imageAccept}`;
+
+  $: fileAccept = fileTypeFilter === 'video' ? videoAccept
+    : fileTypeFilter === 'audio' ? audioAccept
+    : fileTypeFilter === 'image' ? imageAccept
+    : allAccept;
+
   // --- Confirm modal ---
 
   let showConfirm = false;
@@ -213,6 +226,7 @@
       await uploadVideo(fd);
       uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
       selectedFile = null;
+      fileTypeFilter = '';
       await loadResources();
     } catch (e: unknown) {
       uploadError = e instanceof Error ? e.message : 'Upload failed.';
@@ -610,17 +624,23 @@
                 {/each}
               </select>
             </label>
-            <label for="file">
-              Video File
+            <div>
+              <label for="file-type" class="block text-sm font-medium text-gray-700 mb-1">File Type</label>
+              <select id="file-type" bind:value={fileTypeFilter} class="mb-1">
+                <option value="">All supported files</option>
+                <option value="video">All videos</option>
+                <option value="audio">All audios</option>
+                <option value="image">All images</option>
+              </select>
               <input
                 type="file"
                 id="file"
                 name="file"
-                accept="video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,audio/aac,image/jpeg,image/png,image/webp,image/gif"
+                accept={fileAccept}
                 on:change={onFileChange}
                 required
               />
-            </label>
+            </div>
             {#if !isGlobal && uploadForm.category_id}
               <label for="password">
                 Password (required for this category)
