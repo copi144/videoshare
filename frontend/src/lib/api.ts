@@ -92,12 +92,14 @@ export interface ResourceDetail extends Resource {
 }
 
 // Resources
-export const listResources = (params?: {limit?: number; offset?: number}) => {
+export const listResources = (params?: {limit?: number; offset?: number; category_id?: string; playlist_id?: string}) => {
   let path = '/api/resources';
   if (params) {
     const qs = new URLSearchParams();
     if (params.limit !== undefined) qs.set('limit', String(params.limit));
     if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    if (params.category_id !== undefined) qs.set('category_id', params.category_id);
+    if (params.playlist_id !== undefined) qs.set('playlist_id', params.playlist_id);
     const query = qs.toString();
     if (query) path += `?${query}`;
   }
@@ -148,12 +150,13 @@ export const assignUploaders = (categoryId: string, userIds: string[]) =>
   request<{ok: boolean; redirect?: string}>('POST', `/api/categories/${categoryId}/uploaders`, { user_ids: userIds });
 
 // Playlists
-export const listPlaylists = (params?: {limit?: number; offset?: number}) => {
+export const listPlaylists = (params?: {limit?: number; offset?: number; category_id?: string}) => {
   let path = '/api/playlists';
   if (params) {
     const qs = new URLSearchParams();
     if (params.limit !== undefined) qs.set('limit', String(params.limit));
     if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    if (params.category_id !== undefined) qs.set('category_id', params.category_id);
     const query = qs.toString();
     if (query) path += `?${query}`;
   }

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { checkAuth, isAuthenticated, startHeartbeat } from './stores/auth';
   import Login from './pages/Login.svelte';
-  import Admin from './pages/Admin.svelte';
+  import MainApp from './pages/MainApp.svelte';
   import Share from './pages/Share.svelte';
   import Watch from './pages/Watch.svelte';
 
@@ -46,7 +46,7 @@
   {#if view === 'login'}
     <Login onSuccess={handleLoginSuccess} />
   {:else if view === 'admin'}
-    <Admin />
+    <MainApp />
   {:else if view === 'share' && shareId}
     <Share id={shareId} onSuccess={handleShareSuccess} />
   {:else if view === 'watch' && shareId}
