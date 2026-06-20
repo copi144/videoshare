@@ -33,6 +33,14 @@ func APIAuth(db *sql.DB, sm *scs.SessionManager) func(http.Handler) http.Handler
 				return
 			}
 
+			// Allow requests with session-based video auth (share link viewers).
+			// The route-specific RequireUserOrVideoAuth + RequireShareScope middlewares
+			// still enforce scope restrictions.
+			if sm.GetBool(r.Context(), "authenticated") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			auth := r.Header.Get("Authorization")
 			if !strings.HasPrefix(auth, "Bearer ") {
 				http.Error(w, `{"error":"Missing or invalid authorization header"}`, http.StatusUnauthorized)
