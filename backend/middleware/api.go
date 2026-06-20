@@ -60,6 +60,7 @@ func APIAuth(db *sql.DB, sm *scs.SessionManager) func(http.Handler) http.Handler
 			// Set user info in context so downstream handlers can access it
 			// without relying on the session cookie.
 			ctx := SetUserContext(r.Context(), apiToken.Name, isAdmin)
+			ctx = SetAPIAuthenticated(ctx)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

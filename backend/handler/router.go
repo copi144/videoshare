@@ -30,10 +30,12 @@ func NewRouter(sm *scs.SessionManager,
 	r.Use(chimw.RealIP)
 	r.Use(sm.LoadAndSave)
 
-	rl, stop := middleware.RateLimit(60, time.Minute)
-	r.Use(rl)
-
 	r.Use(middleware.APIAuth(db, sm))
+
+	rl, stop := middleware.RateLimit(300, time.Minute, func(r *http.Request) bool {
+		return middleware.IsAPIAuthenticated(r.Context())
+	})
+	r.Use(rl)
 
 	var stops []func()
 	stops = append(stops, stop)

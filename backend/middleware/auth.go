@@ -20,7 +20,8 @@ type ctxKey string
 const (
 	ctxUserID   ctxKey = "ctx_user_id"
 	ctxIsAdmin  ctxKey = "ctx_is_admin"
-	ctxUsername ctxKey = "ctx_username"
+	ctxUsername         ctxKey = "ctx_username"
+	ctxAPIAuthenticated ctxKey = "ctx_api_authenticated"
 )
 
 // SetUserContext returns a new context with user identity values set.
@@ -126,6 +127,19 @@ func GetUsername(ctx context.Context, sm *scs.SessionManager) string {
 		return name
 	}
 	return sm.GetString(ctx, sessionUsernameKey)
+}
+
+// SetAPIAuthenticated returns a context marked as API-token-authenticated.
+func SetAPIAuthenticated(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxAPIAuthenticated, true)
+}
+
+// IsAPIAuthenticated returns true if the request was authenticated via API token.
+func IsAPIAuthenticated(ctx context.Context) bool {
+	if v, ok := ctx.Value(ctxAPIAuthenticated).(bool); ok {
+		return v
+	}
+	return false
 }
 
 // RequireUserAuth returns middleware that protects routes behind a valid

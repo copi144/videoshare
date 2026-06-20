@@ -13,7 +13,7 @@ type visitor struct {
 
 // RateLimit returns middleware that limits requests to maxCount per window duration per IP,
 // along with a stop function that halts the internal cleanup goroutine.
-func RateLimit(maxCount int, window time.Duration) (func(http.Handler) http.Handler, func()) {
+func RateLimit(maxCount int, window time.Duration, skip ...func(*http.Request) bool) (func(http.Handler) http.Handler, func()) {
 	var mu sync.Mutex
 	visits := make(map[string]*visitor)
 
@@ -41,6 +41,16 @@ func RateLimit(maxCount int, window time.Duration) (func(http.Handler) http.Hand
 
 	mw := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Bypass rate limiting for requests that match any skip function (e.g. API token auth).
+			if len(skip) > 0 {
+				for _, fn := range skip {
+					if fn(r) {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+
 			ip := r.RemoteAddr
 
 			mu.Lock()
