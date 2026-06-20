@@ -1,13 +1,21 @@
 package web
 
 import (
-	"embed"
+	_ "embed"
 )
 
 //go:embed spa/index.html
-var spaFS embed.FS
+var spaHTML []byte
+
+//go:embed spa/favicon.svg
+var faviconSVG []byte
 
 // SPA returns the embedded single-page application HTML file.
-func SPA() ([]byte, error) {
-	return spaFS.ReadFile("spa/index.html")
+func SPA() []byte {
+	return spaHTML
+}
+
+// Favicon returns the embedded favicon SVG file.
+func Favicon() []byte {
+	return faviconSVG
 }

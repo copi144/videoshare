@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/mdp/qrterminal/v3"
+	"github.com/pquerna/otp/totp"
 
 	"videoshare/handler"
 	"videoshare/model"
@@ -79,6 +82,50 @@ func main() {
 	categoryStore := model.NewCategoryStore(db)
 	playlistStore := model.NewPlaylistStore(db)
 
+	// Check for TOTP reset file
+	resetPath := filepath.Join(cfg.DataDir, "reset-admin-totp.txt")
+	if data, err := os.ReadFile(resetPath); err == nil {
+		adminUsername := strings.TrimSpace(string(data))
+		if adminUsername == "" {
+			adminUsername = cfg.AdminUsername
+		}
+
+		// Find the admin user by username
+		adminUser, err := userStore.GetByUsername(adminUsername)
+		if err != nil {
+			slog.Error("failed to find admin user for TOTP reset", "username", adminUsername, "error", err)
+		} else {
+			key, err := totp.Generate(totp.GenerateOpts{
+				Issuer:      "VideoShare",
+				AccountName: adminUser.Username,
+			})
+			if err != nil {
+				slog.Error("failed to generate TOTP key for reset", "error", err)
+			} else {
+				// Update TOTP secret directly
+				_, err := db.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", key.Secret(), adminUser.ID)
+				if err != nil {
+					slog.Error("failed to reset TOTP secret", "error", err)
+				} else {
+					fmt.Println("\n═══════════════════════════════════════════")
+					fmt.Println("  Admin TOTP Reset!")
+					fmt.Printf("  Username: %s\n", adminUsername)
+					fmt.Println("  Scan the QR code below with your")
+					fmt.Println("  authenticator app")
+					fmt.Printf("  TOTP URI: %s\n", key.URL())
+					fmt.Println("═══════════════════════════════════════════")
+					qrterminal.Generate(key.URL(), qrterminal.L, os.Stdout)
+					fmt.Println("")
+
+					// Remove the reset file
+					if err := os.Remove(resetPath); err != nil {
+						slog.Warn("failed to remove TOTP reset file", "path", resetPath, "error", err)
+					}
+				}
+			}
+		}
+	}
+
 	// Initialize transcode queue with access to the resource store for status updates.
 	tc := transcode.LoadTranscodeConfig()
 	tq := transcode.NewQueue(tc, resourceStore)
@@ -87,7 +134,23 @@ func main() {
 	// Reset stalled 'processing' jobs to 'pending' on startup.
 	transcode.StartupRecovery(resourceStore)
 
-	router, rateLimitStops := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, tq, cfg.FFmpegPath)
+	shareLinkStore := model.NewShareLinkStore(db)
+	router, rateLimitStops := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, shareLinkStore, tq, cfg.FFmpegPath)
+
+	// Start cleanup goroutines
+	shareLinkStore.StartCleanup()
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := model.DeleteExpiredAPITokens(db); err != nil {
+					slog.Error("api token cleanup error", "error", err)
+				}
+			}
+		}
+	}()
 
 	addr := cfg.Addr
 	srv := &http.Server{Addr: addr, Handler: router}
@@ -116,6 +179,7 @@ func main() {
 
 		tq.Shutdown()
 		sessStore.StopCleanup()
+		shareLinkStore.StopCleanup()
 		for _, stopFn := range rateLimitStops {
 			stopFn()
 		}
@@ -129,6 +193,7 @@ func main() {
 		// run ordered cleanup on early listen error (e.g. bind) so we exit cleanly
 		tq.Shutdown()
 		sessStore.StopCleanup()
+		shareLinkStore.StopCleanup()
 		for _, stopFn := range rateLimitStops {
 			stopFn()
 		}

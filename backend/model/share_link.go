@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"log/slog"
 	"time"
 )
 
@@ -17,14 +18,41 @@ type ShareLink struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
-// ShareLinkStore provides CRUD operations for share_links.
+// ShareLinkStore provides CRUD operations for share_links with periodic cleanup.
 type ShareLinkStore struct {
-	db *sql.DB
+	db          *sql.DB
+	stopCleanup chan struct{}
 }
 
 // NewShareLinkStore creates a new ShareLinkStore.
 func NewShareLinkStore(db *sql.DB) *ShareLinkStore {
-	return &ShareLinkStore{db: db}
+	return &ShareLinkStore{
+		db:          db,
+		stopCleanup: make(chan struct{}),
+	}
+}
+
+// StartCleanup launches a background goroutine that deletes expired share links every hour.
+func (s *ShareLinkStore) StartCleanup() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := s.DeleteExpired(); err != nil {
+					slog.Error("share link cleanup error", "error", err)
+				}
+			case <-s.stopCleanup:
+				return
+			}
+		}
+	}()
+}
+
+// StopCleanup signals the cleanup goroutine to stop.
+func (s *ShareLinkStore) StopCleanup() {
+	close(s.stopCleanup)
 }
 
 // GenerateShareLinkPassword generates 8 random bytes and returns a 16-char hex string.

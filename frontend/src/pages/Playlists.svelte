@@ -5,8 +5,8 @@
   export let onError: ((msg: string) => void) | undefined = undefined;
 
   interface Category {
-    id: string;
     name: string;
+    display_name: string;
     description?: string;
   }
 
@@ -14,7 +14,7 @@
     id: string;
     name: string;
     description: string;
-    category_id: string;
+    category_name: string;
     created_at: string;
   }
 
@@ -22,6 +22,7 @@
   let categoryMap: Record<string, string> = {};
   let categories: Category[] = [];
   let formName = '';
+  let formDisplayName = '';
   let formDescription = '';
   let formCategoryId = '';
   let formPlaylistType: 'video' | 'audio' | 'image' = 'video';
@@ -47,7 +48,7 @@
       categories = catData.categories;
       categoryMap = {};
       for (const cat of catData.categories) {
-        categoryMap[cat.id] = cat.name;
+        categoryMap[cat.name] = cat.display_name || cat.name;
       }
       playlists = plData.playlists;
       total = plData.total;
@@ -72,10 +73,11 @@
     }
 
     try {
-      const result = await createPlaylist(formName.trim(), formDescription.trim(), formCategoryId, formPlaylistType);
+      const result = await createPlaylist(formName.trim(), formDisplayName.trim(), formDescription.trim(), formCategoryId, formPlaylistType);
       if (result.ok) {
         success = `Playlist "${formName.trim()}" created successfully.`;
         formName = '';
+        formDisplayName = '';
         formDescription = '';
         formCategoryId = '';
         formPlaylistType = 'video';
@@ -128,7 +130,7 @@
           {#each playlists as pl}
             <tr class="border-b border-gray-100">
               <td class="py-2 pr-4">{pl.name}</td>
-              <td class="py-2 pr-4 text-gray-500">{categoryMap[pl.category_id] || 'Unknown'}</td>
+              <td class="py-2 pr-4 text-gray-500">{categoryMap[pl.category_name] || 'Unknown'}</td>
               <td class="py-2 pr-4 text-gray-500">{pl.description || '—'}</td>
               <td class="py-2 pr-4 text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</td>
               <td class="py-2">
@@ -155,6 +157,10 @@
         <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
       </div>
       <div>
+        <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+        <input type="text" id="display_name" bind:value={formDisplayName} class="w-full" />
+      </div>
+      <div>
         <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
         <textarea id="description" name="description" bind:value={formDescription} class="w-full"></textarea>
       </div>
@@ -164,7 +170,7 @@
           <select id="category" name="category_id" bind:value={formCategoryId} required class="w-full">
             <option value="">— Select —</option>
             {#each categories as cat}
-              <option value={cat.id}>{cat.name}{cat.id === 'global' ? ' (public)' : ''}</option>
+              <option value={cat.name}>{cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}</option>
             {/each}
           </select>
         </div>

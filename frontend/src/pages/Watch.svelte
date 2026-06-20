@@ -19,7 +19,6 @@
     uploaded_by: string;
     uploaded_username: string;
     filename?: string;
-    category_id: string;
     category_name: string;
     transcode_status?: string;
     banned?: boolean;

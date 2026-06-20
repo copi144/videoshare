@@ -21,14 +21,15 @@ func (q *Queries) CountAdminUsers(ctx context.Context) (int64, error) {
 }
 
 const createUser = `-- name: CreateUser :exec
-INSERT INTO users (id, username, totp_secret, role) VALUES (?, ?, ?, ?)
+INSERT INTO users (id, username, totp_secret, display_name, role) VALUES (?, ?, ?, ?, ?)
 `
 
 type CreateUserParams struct {
-	ID         string
-	Username   string
-	TotpSecret string
-	Role       string
+	ID          string
+	Username    string
+	TotpSecret  string
+	DisplayName string
+	Role        string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
@@ -36,13 +37,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 		arg.ID,
 		arg.Username,
 		arg.TotpSecret,
+		arg.DisplayName,
 		arg.Role,
 	)
 	return err
 }
 
 const getAdminUser = `-- name: GetAdminUser :one
-SELECT id, username, totp_secret, role, created_at FROM users WHERE role = 'admin' LIMIT 1
+SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE role = 'admin' LIMIT 1
 `
 
 func (q *Queries) GetAdminUser(ctx context.Context) (User, error) {
@@ -52,6 +54,7 @@ func (q *Queries) GetAdminUser(ctx context.Context) (User, error) {
 		&i.ID,
 		&i.Username,
 		&i.TotpSecret,
+		&i.DisplayName,
 		&i.Role,
 		&i.CreatedAt,
 	)
@@ -70,7 +73,7 @@ func (q *Queries) GetAdminUserID(ctx context.Context) (string, error) {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, username, totp_secret, role, created_at FROM users WHERE id = ?
+SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE id = ?
 `
 
 func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
@@ -80,6 +83,7 @@ func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
 		&i.ID,
 		&i.Username,
 		&i.TotpSecret,
+		&i.DisplayName,
 		&i.Role,
 		&i.CreatedAt,
 	)
@@ -87,7 +91,7 @@ func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, totp_secret, role, created_at FROM users WHERE username = ?
+SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE username = ?
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
@@ -97,6 +101,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.ID,
 		&i.Username,
 		&i.TotpSecret,
+		&i.DisplayName,
 		&i.Role,
 		&i.CreatedAt,
 	)
@@ -104,7 +109,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, totp_secret, role, created_at FROM users ORDER BY created_at DESC
+SELECT id, username, totp_secret, display_name, role, created_at FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -120,6 +125,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.ID,
 			&i.Username,
 			&i.TotpSecret,
+			&i.DisplayName,
 			&i.Role,
 			&i.CreatedAt,
 		); err != nil {

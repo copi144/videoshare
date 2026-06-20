@@ -1,15 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { createSession, getResource } from '../lib/api';
+  import { createSession } from '../lib/api';
 
   export let id: string;
   export let password: string = '';
   export let onSuccess: (id: string, password?: string) => void;
 
-  let localPassword = password;
+  let localPassword = '';
   let error: string | null = null;
   let loading = true;
-  let needsPassword = false;
+  let needsShareLink = false;
 
   onMount(async () => {
     if (!id) {
@@ -18,7 +18,7 @@
       return;
     }
 
-    // If a password was provided (e.g. from a share link URL), use it directly
+    // If a password was provided (e.g. from a share link URL), validate it
     if (password) {
       try {
         const result = await createSession('share', { resource_id: id, password });
@@ -26,7 +26,7 @@
           onSuccess(id, password);
           return;
         }
-        error = 'Failed to access video with provided password.';
+        error = 'Invalid or expired share link.';
       } catch (e: unknown) {
         error = e instanceof Error ? e.message : 'Authentication failed.';
       } finally {
@@ -35,22 +35,17 @@
       return;
     }
 
+    // No password — try auto-auth (global category or user with category access)
     try {
-      const resource = await getResource(id);
-      if (resource.category_id === 'global') {
-        // Public video — auto-authenticate and redirect
-        const result = await createSession('share', { resource_id: id, password: '' });
-        if (result.ok) {
-          onSuccess(id, '');
-          return;
-        }
-        error = 'Failed to access video.';
-      } else {
-        // Password-protected — show the form
-        needsPassword = true;
+      const result = await createSession('share', { resource_id: id, password: '' });
+      if (result.ok) {
+        onSuccess(id, '');
+        return;
       }
+      // Auto-auth failed — show share link password form
+      needsShareLink = true;
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Failed to load video info.';
+      error = e instanceof Error ? e.message : 'Failed to access video.';
     } finally {
       loading = false;
     }
@@ -64,7 +59,7 @@
       if (result.ok) {
         onSuccess(id, localPassword);
       } else {
-        error = 'Incorrect password.';
+        error = 'Invalid or expired share link.';
       }
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Authentication failed.';
@@ -76,22 +71,22 @@
 
 {#if loading}
   <p aria-busy="true">Checking video access…</p>
-{:else if needsPassword}
-  <h1>Enter Video Password</h1>
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
+{:else if needsShareLink}
+  <div class="rounded-lg border border-gray-200 bg-white p-6 max-w-md mx-auto mt-8">
+    <h2 class="text-lg font-semibold text-gray-900 mb-2">Share Link Password Required</h2>
+    <p class="text-sm text-gray-600 mb-4">This video requires a share link password to access. If you have a share link, enter the password below.</p>
     <form on:submit|preventDefault={handleSubmit}>
-      <label for="password">
-        Password
-        <input type="password" id="password" name="password" bind:value={localPassword} required autocomplete="off" />
-      </label>
+      <div class="mb-3">
+        <input type="password" id="share-password" name="password" bind:value={localPassword} placeholder="Enter share link password" required autocomplete="off" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+      </div>
       {#if error}
-        <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 mb-3">{error}</div>
       {/if}
-      <button type="submit" disabled={loading} aria-busy={loading}>
+      <button type="submit" disabled={loading} aria-busy={loading} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
         {loading ? 'Authenticating…' : 'Access Video'}
       </button>
     </form>
   </div>
 {:else if error}
-  <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
+  <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 max-w-md mx-auto mt-8">{error}</div>
 {/if}

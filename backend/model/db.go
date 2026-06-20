@@ -75,7 +75,7 @@ func BootstrapAdmin(db *sql.DB, username string) (totpURI string, err error) {
 	}
 
 	_, err = db.Exec(
-		"INSERT INTO users (id, username, totp_secret, role) VALUES (?, ?, ?, 'admin')",
+		"INSERT INTO users (id, username, totp_secret, display_name, role) VALUES (?, ?, ?, '', 'admin')",
 		username, username, key.Secret(),
 	)
 	if err != nil {
@@ -90,7 +90,7 @@ func BootstrapAdmin(db *sql.DB, username string) (totpURI string, err error) {
 // It uses an idempotent INSERT OR IGNORE so it is safe to call every startup.
 func BootstrapGlobalCategory(db *sql.DB, adminUserID string) error {
 	result, err := db.Exec(
-		`INSERT OR IGNORE INTO categories (id, name, description, created_by)
+		`INSERT OR IGNORE INTO categories (name, display_name, description, created_by)
 		 VALUES (?, 'Global', 'Public videos (no password required)', ?)`,
 		GlobalCategoryID, adminUserID,
 	)
@@ -108,7 +108,6 @@ func migrate(db *sql.DB) error {
 	query := `CREATE TABLE IF NOT EXISTS resources (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL DEFAULT '',
-		password_hash TEXT NOT NULL,
 		filename TEXT NOT NULL DEFAULT '',
 		file_size INTEGER NOT NULL DEFAULT 0,
 		content_type TEXT NOT NULL DEFAULT 'video/mp4',
@@ -119,6 +118,11 @@ func migrate(db *sql.DB) error {
 
 	if _, err := db.Exec(query); err != nil {
 		return fmt.Errorf("create resources table: %w", err)
+	}
+
+	// Drop password_hash column from resources (no longer used since share links handle access)
+	if _, err := db.Exec("ALTER TABLE resources DROP COLUMN password_hash"); err != nil {
+		slog.Debug("password_hash column already removed or not supported", "error", err)
 	}
 
 	sessionQuery := `CREATE TABLE IF NOT EXISTS sessions (
@@ -136,7 +140,7 @@ func migrate(db *sql.DB) error {
 	}
 
 	// Add new columns to resources table (idempotent — errors are expected if columns exist)
-	columns := []string{"uploaded_by", "category_id", "transcode_status", "banned", "no_transcode", "resource_type"}
+	columns := []string{"uploaded_by", "category_name", "transcode_status", "banned", "no_transcode", "resource_type"}
 	for _, col := range columns {
 		var def string
 		switch col {
@@ -148,8 +152,8 @@ func migrate(db *sql.DB) error {
 			def = "TEXT NOT NULL DEFAULT 'none'"
 		case "resource_type":
 			def = "TEXT NOT NULL DEFAULT 'video'"
-		case "category_id":
-			def = "TEXT REFERENCES categories(id)"
+		case "category_name":
+			def = "TEXT REFERENCES categories(name)"
 		default:
 			def = "TEXT REFERENCES users(id)"
 		}
@@ -166,25 +170,28 @@ func migrate(db *sql.DB) error {
 			id TEXT PRIMARY KEY,
 			username TEXT UNIQUE NOT NULL,
 			totp_secret TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
 			role TEXT NOT NULL DEFAULT 'uploader',
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS categories (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
+			name TEXT PRIMARY KEY,
+			display_name TEXT NOT NULL DEFAULT '',
 			description TEXT NOT NULL DEFAULT '',
 			created_by TEXT NOT NULL REFERENCES users(id),
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS category_uploaders (
-			category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+		`CREATE TABLE IF NOT EXISTS category_users (
+			category_name TEXT NOT NULL REFERENCES categories(name) ON DELETE CASCADE,
 			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			PRIMARY KEY (category_id, user_id)
+			PRIMARY KEY (category_name, user_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS playlists (
 			id TEXT PRIMARY KEY,
-			category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+			category_name TEXT NOT NULL REFERENCES categories(name) ON DELETE CASCADE,
+			playlist_type TEXT NOT NULL DEFAULT 'video',
 			name TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
 			description TEXT NOT NULL DEFAULT '',
 			created_by TEXT NOT NULL REFERENCES users(id),
 			sort_order INTEGER NOT NULL DEFAULT 0,
@@ -201,6 +208,7 @@ func migrate(db *sql.DB) error {
 			user_id TEXT NOT NULL,
 			user_role TEXT NOT NULL,
 			username TEXT NOT NULL,
+			expires_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS share_links (
@@ -219,11 +227,6 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
-	// Add playlist_type to playlists table (idempotent)
-	if _, err := db.Exec("ALTER TABLE playlists ADD COLUMN playlist_type TEXT NOT NULL DEFAULT 'video'"); err != nil {
-		slog.Debug("playlist_type column may already exist", "error", err)
-	}
-
 	// Explicit performance indexes (added for pagination and list queries; idempotent)
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_created_at ON resources(created_at)"); err != nil {
 		return fmt.Errorf("create resources created_at index: %w", err)
@@ -231,8 +234,8 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_uploaded_by ON resources(uploaded_by)"); err != nil {
 		return fmt.Errorf("create resources uploaded_by index: %w", err)
 	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_category_id ON resources(category_id)"); err != nil {
-		return fmt.Errorf("create resources category_id index: %w", err)
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_category_name ON resources(category_name)"); err != nil {
+		return fmt.Errorf("create resources category_name index: %w", err)
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_transcode_status ON resources(transcode_status)"); err != nil {
 		return fmt.Errorf("create resources transcode_status index: %w", err)
@@ -246,8 +249,8 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_categories_created_at ON categories(created_at)"); err != nil {
 		return fmt.Errorf("create categories created_at index: %w", err)
 	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_category_id ON playlists(category_id)"); err != nil {
-		return fmt.Errorf("create playlists category_id index: %w", err)
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_category_name ON playlists(category_name)"); err != nil {
+		return fmt.Errorf("create playlists category_name index: %w", err)
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_created_at ON playlists(created_at)"); err != nil {
 		return fmt.Errorf("create playlists created_at index: %w", err)
@@ -263,6 +266,11 @@ func migrate(db *sql.DB) error {
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_playlist_type ON playlists(playlist_type)"); err != nil {
 		return fmt.Errorf("create playlists playlist_type index: %w", err)
+	}
+
+	// Add expires_at column to api_tokens for existing databases (idempotent)
+	if _, err := db.Exec("ALTER TABLE api_tokens ADD COLUMN expires_at DATETIME NOT NULL DEFAULT ''"); err != nil {
+		slog.Debug("api_tokens.expires_at may already exist", "error", err)
 	}
 
 	return nil

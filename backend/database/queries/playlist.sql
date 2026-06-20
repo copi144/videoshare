@@ -1,20 +1,23 @@
 -- name: GetPlaylist :one
-SELECT id, category_id, playlist_type, name, description, created_by, sort_order, created_at FROM playlists WHERE id = ?;
+SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE id = ?;
 
 -- name: ListPlaylistsByCategory :many
-SELECT id, category_id, playlist_type, name, description, created_by, sort_order, created_at FROM playlists WHERE category_id = ? ORDER BY sort_order ASC, created_at ASC;
+SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? ORDER BY sort_order ASC, created_at ASC;
 
 -- name: ListAllPlaylists :many
-SELECT id, category_id, playlist_type, name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC;
+SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC;
 
 -- name: ListPlaylistsPaginated :many
-SELECT id, category_id, playlist_type, name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?;
+SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?;
 
 -- name: CountPlaylists :one
 SELECT COUNT(*) FROM playlists;
 
 -- name: CreatePlaylist :exec
-INSERT INTO playlists (id, category_id, playlist_type, name, description, created_by, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO playlists (id, category_name, playlist_type, name, display_name, description, created_by, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: UpdatePlaylist :exec
+UPDATE playlists SET name = ?, display_name = ?, description = ?, sort_order = ? WHERE id = ?;
 
 -- name: DeletePlaylist :exec
 DELETE FROM playlists WHERE id = ?;
@@ -32,13 +35,13 @@ SELECT resource_id FROM playlist_videos WHERE playlist_id = ? ORDER BY sort_orde
 SELECT playlist_id FROM playlist_videos WHERE resource_id = ?;
 
 -- name: ListPlaylistsByType :many
-SELECT id, category_id, playlist_type, name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC;
+SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC;
 
 -- name: ListPlaylistsByTypePaginated :many
-SELECT id, category_id, playlist_type, name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?;
+SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?;
 
 -- name: CountPlaylistsByType :one
 SELECT COUNT(*) FROM playlists WHERE playlist_type = ?;
 
 -- name: ListPlaylistsByCategoryAndType :many
-SELECT id, category_id, playlist_type, name, description, created_by, sort_order, created_at FROM playlists WHERE category_id = ? AND playlist_type = ? ORDER BY sort_order ASC, created_at ASC;
+SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? AND playlist_type = ? ORDER BY sort_order ASC, created_at ASC;

@@ -16,21 +16,20 @@
     uploaded_by: string;
     uploaded_username: string;
     filename?: string;
-    category_id: string;
     category_name: string;
     transcode_status?: string;
     banned?: boolean;
   }
 
   interface Category {
-    id: string;
     name: string;
+    display_name: string;
     description?: string;
   }
 
   let resources: Resource[] = [];
   let categories: Category[] = [];
-  let uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
+  let uploadForm = { title: '', readme: '', category_id: '', noTranscode: false };
   let selectedFile: File | null = null;
   let error: string | null = null;
   let uploadError: string | null = null;
@@ -47,8 +46,8 @@
     selectedFile = (e.target as HTMLInputElement).files?.[0] ?? null;
   }
 
-  $: selectedCategory = categories.find(c => c.id === uploadForm.category_id);
-  $: isGlobal = selectedCategory ? selectedCategory.id === 'global' : false;
+  $: selectedCategory = categories.find(c => c.name === uploadForm.category_id);
+  $: isGlobal = selectedCategory ? selectedCategory.name === 'global' : false;
 
   function formatSize(bytes: number): string {
     if (bytes < 1024) return bytes + ' B';
@@ -95,10 +94,6 @@
       uploadError = 'Please select a category.';
       return;
     }
-    if (!isGlobal && !uploadForm.password.trim()) {
-      uploadError = 'Password is required for non-public categories.';
-      return;
-    }
 
     uploading = true;
     try {
@@ -108,12 +103,9 @@
       fd.append('readme', uploadForm.readme.trim());
       fd.append('category_id', uploadForm.category_id);
       fd.append('no_transcode', uploadForm.noTranscode ? '1' : '0');
-      if (uploadForm.password.trim()) {
-        fd.append('password', uploadForm.password.trim());
-      }
       await uploadVideo(fd);
       // Reset form
-      uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
+      uploadForm = { title: '', readme: '', category_id: '', noTranscode: false };
       selectedFile = null;
       // Reload resources
       await loadData();
@@ -199,8 +191,8 @@
       <select id="category" name="category_id" bind:value={uploadForm.category_id} required>
         <option value="">— Select a category —</option>
         {#each categories as cat}
-          <option value={cat.id}>
-            {cat.name}{cat.id === 'global' ? ' (public)' : ''}
+          <option value={cat.name}>
+            {cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}
           </option>
         {/each}
       </select>
@@ -216,12 +208,6 @@
         required
       />
     </label>
-    {#if !isGlobal && uploadForm.category_id}
-      <label for="password">
-        Password (required for this category)
-        <input type="text" id="password" name="password" bind:value={uploadForm.password} />
-      </label>
-    {/if}
     <label>
       <input type="checkbox" bind:checked={uploadForm.noTranscode} />
       Skip transcoding (serve original file directly)

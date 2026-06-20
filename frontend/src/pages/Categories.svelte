@@ -5,8 +5,8 @@
   export let onError: ((msg: string) => void) | undefined = undefined;
 
   interface Category {
-    id: string;
     name: string;
+    display_name: string;
     description: string;
     created_by: string;
     created_at: string;
@@ -14,6 +14,7 @@
 
   let categories: Category[] = [];
   let formName = '';
+  let formDisplayName = '';
   let formDescription = '';
   let loading = true;
 
@@ -46,8 +47,9 @@
       return;
     }
     try {
-      await createCategory(formName.trim(), formDescription.trim());
+      await createCategory(formName.trim(), formDisplayName.trim(), formDescription.trim());
       formName = '';
+      formDisplayName = '';
       formDescription = '';
       await loadCategories();
     } catch (e: unknown) {
@@ -56,12 +58,12 @@
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(name: string) {
     if (!confirm('Are you sure you want to delete this category? Videos in this category will remain.')) {
       return;
     }
     try {
-      await deleteCategory(id);
+      await deleteCategory(name);
       await loadCategories();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to delete category.';
@@ -83,6 +85,7 @@
         <thead>
           <tr class="border-b border-gray-200">
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Name</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Display Name</th>
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Description</th>
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Created</th>
             <th class="py-2 text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -92,10 +95,11 @@
           {#each categories as cat}
             <tr class="border-b border-gray-100">
               <td class="py-2 pr-4">{cat.name}</td>
+              <td class="py-2 pr-4 text-gray-500">{cat.display_name || '—'}</td>
               <td class="py-2 pr-4 text-gray-500">{cat.description || '—'}</td>
               <td class="py-2 pr-4 text-gray-500">{new Date(cat.created_at).toLocaleDateString()}</td>
               <td class="py-2">
-                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(cat.id)}>Delete</button>
+                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(cat.name)}>Delete</button>
               </td>
             </tr>
           {/each}
@@ -116,6 +120,10 @@
       <div>
         <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
         <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+      </div>
+      <div>
+        <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+        <input type="text" id="display_name" bind:value={formDisplayName} class="w-full" />
       </div>
       <div>
         <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>

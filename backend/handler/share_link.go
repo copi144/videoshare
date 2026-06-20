@@ -32,8 +32,8 @@ func NewShareLinkHandler(shareLinkStore *model.ShareLinkStore, resourceStore *mo
 // POST /api/share-links
 func (h *ShareLinkHandler) CreateShareLinkAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ResourceID    string `json:"resource_id"`
-		ExpiresInDays int    `json:"expires_in_days"` // 0 means no expiry
+		ResourceID       string `json:"resource_id"`
+		ExpiresInMinutes int    `json:"expires_in_minutes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
@@ -41,6 +41,10 @@ func (h *ShareLinkHandler) CreateShareLinkAPI(w http.ResponseWriter, r *http.Req
 	}
 	if req.ResourceID == "" {
 		respondJSONError(w, "Resource ID is required", http.StatusBadRequest)
+		return
+	}
+	if req.ExpiresInMinutes < 1 || req.ExpiresInMinutes > 525600 {
+		respondJSONError(w, "Expiry must be between 1 minute and 365 days", http.StatusBadRequest)
 		return
 	}
 
@@ -71,12 +75,9 @@ func (h *ShareLinkHandler) CreateShareLinkAPI(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Compute expiry
-	var expiresAt *time.Time
-	if req.ExpiresInDays > 0 {
-		t := time.Now().UTC().Add(time.Duration(req.ExpiresInDays) * 24 * time.Hour)
-		expiresAt = &t
-	}
+	// Compute expiry (always set — required)
+	t := time.Now().UTC().Add(time.Duration(req.ExpiresInMinutes) * time.Minute)
+	expiresAt := &t
 
 	userID := middleware.GetUserIDFromContext(r.Context())
 	now := time.Now().UTC()
@@ -99,7 +100,7 @@ func (h *ShareLinkHandler) CreateShareLinkAPI(w http.ResponseWriter, r *http.Req
 	// Build the share URL
 	url := "/#/v/" + req.ResourceID + "/" + password
 
-	slog.Info("share link created", "resource_id", req.ResourceID, "expires_in_days", req.ExpiresInDays)
+	slog.Info("share link created", "resource_id", req.ResourceID, "expires_in_minutes", req.ExpiresInMinutes)
 	respondJSONOK(w, map[string]interface{}{
 		"ok":         true,
 		"url":        url,

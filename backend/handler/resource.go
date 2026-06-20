@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/bcrypt"
 	"lukechampine.com/blake3"
 
 	"videoshare/middleware"
@@ -63,7 +62,6 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := r.FormValue("title")
-	password := r.FormValue("password")
 	categoryID := r.FormValue("category_id")
 	readme := r.FormValue("readme")
 	noTranscode := r.FormValue("no_transcode") == "1"
@@ -77,8 +75,14 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserIDFromContext(r.Context())
 	userRole := middleware.GetUserRoleFromContext(r.Context())
 
+	// Users with the "user" role are not allowed to upload.
+	if userRole == "user" {
+		respondError(w, r, http.StatusForbidden, "User role is not allowed to upload")
+		return
+	}
+
 	// Non-admin users: verify authorization for non-global categories.
-	if userRole != "admin" && model.RequiresPassword(categoryID) {
+	if userRole != "admin" && !model.IsPublic(categoryID) {
 		authorized, authErr := h.categoryStore.IsUploaderAuthorized(userID, categoryID)
 		if authErr != nil {
 			slog.Error("failed to check category authorization", "error", authErr)
@@ -87,27 +91,6 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 		if !authorized {
 			respondError(w, r, http.StatusForbidden, "You are not authorized to upload to this category")
-			return
-		}
-	}
-
-	// Global category videos are public — no password needed.
-	// All other categories require a password.
-	var (
-		hash []byte
-		err  error
-	)
-	if model.IsPublic(categoryID) {
-		hash = nil // public video, no password hashing
-	} else {
-		if password == "" {
-			respondError(w, r, http.StatusBadRequest, "Password is required for non-global categories")
-			return
-		}
-		hash, err = bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			slog.Error("failed to hash password", "error", err)
-			respondError(w, r, http.StatusInternalServerError, "Failed to secure password")
 			return
 		}
 	}
@@ -250,13 +233,12 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	resource := &model.Resource{
 		ID:           hashHex,
 		Title:        title,
-		PasswordHash: string(hash),
 		Filename:     header.Filename,
 		FileSize:     header.Size,
 		ContentType:  contentType,
 		ResourceType: resourceType,
 		UploadedBy:   userID,
-		CategoryID:   categoryID,
+		CategoryName: categoryID,
 		NoTranscode:  noTranscode,
 	}
 
@@ -365,11 +347,6 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Sanitize for display.
-	for _, res := range resources {
-		res.PasswordHash = ""
-	}
-
 	// Filter banned resources for non-admin users
 	if userRole != "admin" {
 		filtered := make([]*model.Resource, 0, len(resources))
@@ -414,9 +391,6 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		}()
 	}
 
-	// Sanitize — never expose password hash.
-	resource.PasswordHash = ""
-
 	// Read readme file if it exists.
 	readmeContent := ""
 	readmePath := storage.ReadmePath(h.dataDir, resource.ResourceType, resource.ID)
@@ -438,7 +412,7 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		"created_at":       resource.CreatedAt,
 		"updated_at":       resource.UpdatedAt,
 		"uploaded_by":      resource.UploadedBy,
-		"category_id":      resource.CategoryID,
+		"category_name":    resource.CategoryName,
 	})
 }
 

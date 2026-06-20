@@ -13,14 +13,13 @@ import (
 type Resource struct {
 	ID              string    `json:"id"`
 	Title           string    `json:"title"`
-	PasswordHash    string    `json:"-"`
 	Filename        string    `json:"filename"`
 	FileSize        int64     `json:"file_size"`
 	ContentType     string    `json:"content_type"`
 	ResourceType    string    `json:"resource_type"`
 	Views           int       `json:"views"`
 	UploadedBy      string    `json:"uploaded_by"`
-	CategoryID      string    `json:"category_id"`
+	CategoryName    string    `json:"category_name"`
 	TranscodeStatus string    `json:"transcode_status"`
 	Banned          bool      `json:"banned"`
 	NoTranscode     bool      `json:"no_transcode"`
@@ -49,13 +48,12 @@ func (s *ResourceStore) Insert(r *Resource) error {
 	return s.q.CreateResource(ctx, database.CreateResourceParams{
 		ID:           r.ID,
 		Title:        r.Title,
-		PasswordHash: r.PasswordHash,
 		Filename:     r.Filename,
 		FileSize:     r.FileSize,
 		ContentType:  r.ContentType,
 		ResourceType: r.ResourceType,
 		UploadedBy:   sql.NullString{String: r.UploadedBy, Valid: r.UploadedBy != ""},
-		CategoryID:   sql.NullString{String: r.CategoryID, Valid: r.CategoryID != ""},
+		CategoryName: sql.NullString{String: r.CategoryName, Valid: r.CategoryName != ""},
 		NoTranscode:  noTranscode,
 	})
 }
@@ -70,14 +68,13 @@ func (s *ResourceStore) GetByID(id string) (*Resource, error) {
 	return &Resource{
 		ID:              r.ID,
 		Title:           r.Title,
-		PasswordHash:    r.PasswordHash,
 		Filename:        r.Filename,
 		FileSize:        r.FileSize,
 		ContentType:     r.ContentType,
 		ResourceType:    r.ResourceType,
 		Views:           int(r.Views),
 		UploadedBy:      r.UploadedBy.String,
-		CategoryID:      r.CategoryID.String,
+		CategoryName:    r.CategoryName.String,
 		TranscodeStatus: r.TranscodeStatus,
 		Banned:          r.Banned != 0,
 		NoTranscode:     r.NoTranscode != 0,
@@ -98,14 +95,13 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 		resources = append(resources, &Resource{
 			ID:              r.ID,
 			Title:           r.Title,
-			PasswordHash:    r.PasswordHash,
 			Filename:        r.Filename,
 			FileSize:        r.FileSize,
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
 			UploadedBy:      r.UploadedBy.String,
-			CategoryID:      r.CategoryID.String,
+			CategoryName:    r.CategoryName.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -128,14 +124,13 @@ func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
 		resources = append(resources, &Resource{
 			ID:              r.ID,
 			Title:           r.Title,
-			PasswordHash:    r.PasswordHash,
 			Filename:        r.Filename,
 			FileSize:        r.FileSize,
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
 			UploadedBy:      r.UploadedBy.String,
-			CategoryID:      r.CategoryID.String,
+			CategoryName:    r.CategoryName.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -161,14 +156,13 @@ func (s *ResourceStore) ListPaginated(limit, offset int) ([]*Resource, error) {
 		resources = append(resources, &Resource{
 			ID:              r.ID,
 			Title:           r.Title,
-			PasswordHash:    r.PasswordHash,
 			Filename:        r.Filename,
 			FileSize:        r.FileSize,
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
 			UploadedBy:      r.UploadedBy.String,
-			CategoryID:      r.CategoryID.String,
+			CategoryName:    r.CategoryName.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -202,14 +196,13 @@ func (s *ResourceStore) ListByUploaderPaginated(userID string, limit, offset int
 		resources = append(resources, &Resource{
 			ID:              r.ID,
 			Title:           r.Title,
-			PasswordHash:    r.PasswordHash,
 			Filename:        r.Filename,
 			FileSize:        r.FileSize,
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
 			UploadedBy:      r.UploadedBy.String,
-			CategoryID:      r.CategoryID.String,
+			CategoryName:    r.CategoryName.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -292,14 +285,13 @@ func (s *ResourceStore) ListByTranscodeStatus(status string) ([]*Resource, error
 		resources = append(resources, &Resource{
 			ID:              r.ID,
 			Title:           r.Title,
-			PasswordHash:    r.PasswordHash,
 			Filename:        r.Filename,
 			FileSize:        r.FileSize,
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
 			UploadedBy:      r.UploadedBy.String,
-			CategoryID:      r.CategoryID.String,
+			CategoryName:    r.CategoryName.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -332,14 +324,13 @@ func (s *ResourceStore) ListByTypePaginated(resourceType string, limit, offset i
 		resources = append(resources, &Resource{
 			ID:              r.ID,
 			Title:           r.Title,
-			PasswordHash:    r.PasswordHash,
 			Filename:        r.Filename,
 			FileSize:        r.FileSize,
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
 			UploadedBy:      r.UploadedBy.String,
-			CategoryID:      r.CategoryID.String,
+			CategoryName:    r.CategoryName.String,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -360,7 +351,7 @@ func (s *ResourceStore) CountByType(resourceType string) (int, error) {
 // ListByTypeAndUploaderPaginated returns a page of resources with the given type and uploader.
 func (s *ResourceStore) ListByTypeAndUploaderPaginated(resourceType, uploaderID string, limit, offset int) ([]*Resource, error) {
 	rows, err := s.db.Query(
-		`SELECT id, title, password_hash, filename, file_size, content_type, resource_type, views, uploaded_by, category_id, no_transcode, transcode_status, banned, created_at, updated_at
+		`SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, no_transcode, transcode_status, banned, created_at, updated_at
 		 FROM resources WHERE resource_type = ? AND uploaded_by = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		resourceType, uploaderID, limit, offset,
 	)
@@ -372,20 +363,19 @@ func (s *ResourceStore) ListByTypeAndUploaderPaginated(resourceType, uploaderID 
 	var resources []*Resource
 	for rows.Next() {
 		r := &Resource{}
-		var passwordHash, filename, contentType, uploadedBy, categoryID, transcodeStatus string
+		var filename, contentType, uploadedBy, categoryName, transcodeStatus string
 		var fileSize, views, noTranscode int64
 		var banned int64
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&r.ID, &r.Title, &passwordHash, &filename, &fileSize, &contentType, &r.ResourceType, &views, &uploadedBy, &categoryID, &noTranscode, &transcodeStatus, &banned, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &filename, &fileSize, &contentType, &r.ResourceType, &views, &uploadedBy, &categoryName, &noTranscode, &transcodeStatus, &banned, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
-		r.PasswordHash = passwordHash
 		r.Filename = filename
 		r.FileSize = fileSize
 		r.ContentType = contentType
 		r.Views = int(views)
 		r.UploadedBy = uploadedBy
-		r.CategoryID = categoryID
+		r.CategoryName = categoryName
 		r.NoTranscode = noTranscode != 0
 		r.TranscodeStatus = transcodeStatus
 		r.Banned = banned != 0

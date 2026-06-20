@@ -10,26 +10,26 @@ import (
 	"database/sql"
 )
 
-const addCategoryUploader = `-- name: AddCategoryUploader :exec
-INSERT INTO category_uploaders (category_id, user_id) VALUES (?, ?)
+const addUploader = `-- name: AddUploader :exec
+INSERT INTO category_users (category_name, user_id) VALUES (?, ?)
 `
 
-type AddCategoryUploaderParams struct {
-	CategoryID string
-	UserID     string
+type AddUploaderParams struct {
+	CategoryName string
+	UserID       string
 }
 
-func (q *Queries) AddCategoryUploader(ctx context.Context, arg AddCategoryUploaderParams) error {
-	_, err := q.db.ExecContext(ctx, addCategoryUploader, arg.CategoryID, arg.UserID)
+func (q *Queries) AddUploader(ctx context.Context, arg AddUploaderParams) error {
+	_, err := q.db.ExecContext(ctx, addUploader, arg.CategoryName, arg.UserID)
 	return err
 }
 
 const clearCategoryUploaders = `-- name: ClearCategoryUploaders :exec
-DELETE FROM category_uploaders WHERE category_id = ?
+DELETE FROM category_users WHERE category_name = ?
 `
 
-func (q *Queries) ClearCategoryUploaders(ctx context.Context, categoryID string) error {
-	_, err := q.db.ExecContext(ctx, clearCategoryUploaders, categoryID)
+func (q *Queries) ClearCategoryUploaders(ctx context.Context, categoryName string) error {
+	_, err := q.db.ExecContext(ctx, clearCategoryUploaders, categoryName)
 	return err
 }
 
@@ -45,7 +45,7 @@ func (q *Queries) CountCategories(ctx context.Context) (int64, error) {
 }
 
 const countCategoriesByUploader = `-- name: CountCategoriesByUploader :one
-SELECT COUNT(*) FROM categories c JOIN category_uploaders cu ON cu.category_id = c.id WHERE cu.user_id = ?
+SELECT COUNT(*) FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ?
 `
 
 func (q *Queries) CountCategoriesByUploader(ctx context.Context, userID string) (int64, error) {
@@ -56,20 +56,20 @@ func (q *Queries) CountCategoriesByUploader(ctx context.Context, userID string) 
 }
 
 const createCategory = `-- name: CreateCategory :exec
-INSERT INTO categories (id, name, description, created_by) VALUES (?, ?, ?, ?)
+INSERT INTO categories (name, display_name, description, created_by) VALUES (?, ?, ?, ?)
 `
 
 type CreateCategoryParams struct {
-	ID          string
 	Name        string
+	DisplayName string
 	Description string
 	CreatedBy   string
 }
 
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) error {
 	_, err := q.db.ExecContext(ctx, createCategory,
-		arg.ID,
 		arg.Name,
+		arg.DisplayName,
 		arg.Description,
 		arg.CreatedBy,
 	)
@@ -77,24 +77,24 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 }
 
 const deleteCategory = `-- name: DeleteCategory :exec
-DELETE FROM categories WHERE id = ?
+DELETE FROM categories WHERE name = ?
 `
 
-func (q *Queries) DeleteCategory(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteCategory, id)
+func (q *Queries) DeleteCategory(ctx context.Context, name string) error {
+	_, err := q.db.ExecContext(ctx, deleteCategory, name)
 	return err
 }
 
 const getCategory = `-- name: GetCategory :one
-SELECT id, name, description, created_by, created_at FROM categories WHERE id = ?
+SELECT name, display_name, description, created_by, created_at FROM categories WHERE name = ?
 `
 
-func (q *Queries) GetCategory(ctx context.Context, id string) (Category, error) {
-	row := q.db.QueryRowContext(ctx, getCategory, id)
+func (q *Queries) GetCategory(ctx context.Context, name string) (Category, error) {
+	row := q.db.QueryRowContext(ctx, getCategory, name)
 	var i Category
 	err := row.Scan(
-		&i.ID,
 		&i.Name,
+		&i.DisplayName,
 		&i.Description,
 		&i.CreatedBy,
 		&i.CreatedAt,
@@ -102,12 +102,182 @@ func (q *Queries) GetCategory(ctx context.Context, id string) (Category, error) 
 	return i, err
 }
 
-const getCategoryUploaders = `-- name: GetCategoryUploaders :many
-SELECT user_id FROM category_uploaders WHERE category_id = ?
+const getCategoryVideoCount = `-- name: GetCategoryVideoCount :one
+SELECT COUNT(*) FROM resources WHERE category_name = ?
 `
 
-func (q *Queries) GetCategoryUploaders(ctx context.Context, categoryID string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getCategoryUploaders, categoryID)
+func (q *Queries) GetCategoryVideoCount(ctx context.Context, categoryName sql.NullString) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getCategoryVideoCount, categoryName)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const isUploaderAuthorized = `-- name: IsUploaderAuthorized :one
+SELECT COUNT(*) FROM category_users WHERE category_name = ? AND user_id = ?
+`
+
+type IsUploaderAuthorizedParams struct {
+	CategoryName string
+	UserID       string
+}
+
+func (q *Queries) IsUploaderAuthorized(ctx context.Context, arg IsUploaderAuthorizedParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, isUploaderAuthorized, arg.CategoryName, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const listCategories = `-- name: ListCategories :many
+SELECT name, display_name, description, created_by, created_at FROM categories ORDER BY created_at DESC
+`
+
+func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
+	rows, err := q.db.QueryContext(ctx, listCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Category{}
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoriesByUploader = `-- name: ListCategoriesByUploader :many
+SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ? ORDER BY c.created_at DESC
+`
+
+func (q *Queries) ListCategoriesByUploader(ctx context.Context, userID string) ([]Category, error) {
+	rows, err := q.db.QueryContext(ctx, listCategoriesByUploader, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Category{}
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoriesByUploaderPaginated = `-- name: ListCategoriesByUploaderPaginated :many
+SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ? ORDER BY c.created_at DESC LIMIT ? OFFSET ?
+`
+
+type ListCategoriesByUploaderPaginatedParams struct {
+	UserID string
+	Limit  int64
+	Offset int64
+}
+
+func (q *Queries) ListCategoriesByUploaderPaginated(ctx context.Context, arg ListCategoriesByUploaderPaginatedParams) ([]Category, error) {
+	rows, err := q.db.QueryContext(ctx, listCategoriesByUploaderPaginated, arg.UserID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Category{}
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoriesPaginated = `-- name: ListCategoriesPaginated :many
+SELECT name, display_name, description, created_by, created_at FROM categories ORDER BY created_at DESC LIMIT ? OFFSET ?
+`
+
+type ListCategoriesPaginatedParams struct {
+	Limit  int64
+	Offset int64
+}
+
+func (q *Queries) ListCategoriesPaginated(ctx context.Context, arg ListCategoriesPaginatedParams) ([]Category, error) {
+	rows, err := q.db.QueryContext(ctx, listCategoriesPaginated, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Category{}
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUploaders = `-- name: ListUploaders :many
+SELECT user_id FROM category_users WHERE category_name = ?
+`
+
+func (q *Queries) ListUploaders(ctx context.Context, categoryName string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listUploaders, categoryName)
 	if err != nil {
 		return nil, err
 	}
@@ -129,172 +299,16 @@ func (q *Queries) GetCategoryUploaders(ctx context.Context, categoryID string) (
 	return items, nil
 }
 
-const getCategoryVideoCount = `-- name: GetCategoryVideoCount :one
-SELECT COUNT(*) FROM resources WHERE category_id = ?
+const removeUploader = `-- name: RemoveUploader :exec
+DELETE FROM category_users WHERE category_name = ? AND user_id = ?
 `
 
-func (q *Queries) GetCategoryVideoCount(ctx context.Context, categoryID sql.NullString) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getCategoryVideoCount, categoryID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type RemoveUploaderParams struct {
+	CategoryName string
+	UserID       string
 }
 
-const isUploaderAuthorized = `-- name: IsUploaderAuthorized :one
-SELECT COUNT(*) FROM category_uploaders WHERE category_id = ? AND user_id = ?
-`
-
-type IsUploaderAuthorizedParams struct {
-	CategoryID string
-	UserID     string
-}
-
-func (q *Queries) IsUploaderAuthorized(ctx context.Context, arg IsUploaderAuthorizedParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, isUploaderAuthorized, arg.CategoryID, arg.UserID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const listCategories = `-- name: ListCategories :many
-SELECT id, name, description, created_by, created_at FROM categories ORDER BY created_at DESC
-`
-
-func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
-	rows, err := q.db.QueryContext(ctx, listCategories)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Category{}
-	for rows.Next() {
-		var i Category
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Description,
-			&i.CreatedBy,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listCategoriesByUploader = `-- name: ListCategoriesByUploader :many
-SELECT c.id, c.name, c.description, c.created_by, c.created_at FROM categories c JOIN category_uploaders cu ON cu.category_id = c.id WHERE cu.user_id = ? ORDER BY c.created_at DESC
-`
-
-func (q *Queries) ListCategoriesByUploader(ctx context.Context, userID string) ([]Category, error) {
-	rows, err := q.db.QueryContext(ctx, listCategoriesByUploader, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Category{}
-	for rows.Next() {
-		var i Category
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Description,
-			&i.CreatedBy,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listCategoriesByUploaderPaginated = `-- name: ListCategoriesByUploaderPaginated :many
-SELECT c.id, c.name, c.description, c.created_by, c.created_at FROM categories c JOIN category_uploaders cu ON cu.category_id = c.id WHERE cu.user_id = ? ORDER BY c.created_at DESC LIMIT ? OFFSET ?
-`
-
-type ListCategoriesByUploaderPaginatedParams struct {
-	UserID string
-	Limit  int64
-	Offset int64
-}
-
-func (q *Queries) ListCategoriesByUploaderPaginated(ctx context.Context, arg ListCategoriesByUploaderPaginatedParams) ([]Category, error) {
-	rows, err := q.db.QueryContext(ctx, listCategoriesByUploaderPaginated, arg.UserID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Category{}
-	for rows.Next() {
-		var i Category
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Description,
-			&i.CreatedBy,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listCategoriesPaginated = `-- name: ListCategoriesPaginated :many
-SELECT id, name, description, created_by, created_at FROM categories ORDER BY created_at DESC LIMIT ? OFFSET ?
-`
-
-type ListCategoriesPaginatedParams struct {
-	Limit  int64
-	Offset int64
-}
-
-func (q *Queries) ListCategoriesPaginated(ctx context.Context, arg ListCategoriesPaginatedParams) ([]Category, error) {
-	rows, err := q.db.QueryContext(ctx, listCategoriesPaginated, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Category{}
-	for rows.Next() {
-		var i Category
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Description,
-			&i.CreatedBy,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) RemoveUploader(ctx context.Context, arg RemoveUploaderParams) error {
+	_, err := q.db.ExecContext(ctx, removeUploader, arg.CategoryName, arg.UserID)
+	return err
 }

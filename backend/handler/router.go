@@ -2,7 +2,6 @@ package handler
 
 import (
 	"database/sql"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 func NewRouter(sm *scs.SessionManager,
 	resourceStore *model.ResourceStore, dataDir string, db *sql.DB,
 	userStore *model.UserStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore,
+	shareLinkStore *model.ShareLinkStore,
 	transcodeQueue *transcode.Queue, ffmpegPath string) (http.Handler, []func()) {
 	r := chi.NewRouter()
 
@@ -41,31 +41,29 @@ func NewRouter(sm *scs.SessionManager,
 	// Health check
 	r.Get("/health", NewHealthHandler(db).ServeHealth)
 
+	// Favicon
+	r.Get("/favicon.svg", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Write(web.Favicon())
+	})
+
 	// Homepage — serve the SPA
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		spa, err := web.SPA()
-		if err != nil {
-			slog.Error("failed to read SPA", "error", err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(spa)
+		w.Write(web.SPA())
 	})
 
 	// Create handlers with dependency injection.
 	userH := NewUserHandler(userStore, sm, db)
-	authH := NewAuthHandler(resourceStore, sm)
 	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, userStore, playlistStore, transcodeQueue, ffmpegPath)
-	shareLinkH := NewShareLinkHandler(model.NewShareLinkStore(db), resourceStore)
-	sessionH := NewSessionHandler(userStore, resourceStore, model.NewShareLinkStore(db), sm, db)
+	shareLinkH := NewShareLinkHandler(shareLinkStore, resourceStore)
+	sessionH := NewSessionHandler(userStore, resourceStore, shareLinkStore, categoryStore, sm, db)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
 	categoryH := NewCategoryHandler(categoryStore, userStore, sm)
 
 	// JSON API routes that are public
 	r.Post("/api/login", userH.ServeLoginAPI)
-	r.Post("/api/s/{id}/auth", authH.AuthenticateAPI)
 
 	// Session management — create or refresh auth session
 	r.Post("/api/session", sessionH.ServeSessionAPI)
@@ -115,6 +113,9 @@ func NewRouter(sm *scs.SessionManager,
 
 			// JSON API routes for users (admin only)
 			r.Post("/api/users", userH.CreateUserAPI)
+			r.Get("/api/users", userH.ListUsersAPI)
+			r.Delete("/api/users/{id}", userH.DeleteUserAPI)
+			r.Post("/api/users/{id}/reset-totp", userH.ResetTOTPAPI)
 		})
 
 		// Share link management — requires user auth
@@ -145,14 +146,8 @@ func NewRouter(sm *scs.SessionManager,
 			respondJSONError(w, "Not found", http.StatusNotFound)
 			return
 		}
-		spa, err := web.SPA()
-		if err != nil {
-			slog.Error("failed to read SPA", "error", err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(spa)
+		w.Write(web.SPA())
 	})
 
 	return r, stops

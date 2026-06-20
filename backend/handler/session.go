@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/pquerna/otp/totp"
@@ -22,16 +23,18 @@ type SessionHandler struct {
 	userStore      *model.UserStore
 	resourceStore  *model.ResourceStore
 	shareLinkStore *model.ShareLinkStore
+	categoryStore  *model.CategoryStore
 	sm             *scs.SessionManager
 	db             *sql.DB
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, shareLinkStore *model.ShareLinkStore, sm *scs.SessionManager, db *sql.DB) *SessionHandler {
+func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, shareLinkStore *model.ShareLinkStore, categoryStore *model.CategoryStore, sm *scs.SessionManager, db *sql.DB) *SessionHandler {
 	return &SessionHandler{
 		userStore:      userStore,
 		resourceStore:  resourceStore,
 		shareLinkStore: shareLinkStore,
+		categoryStore:  categoryStore,
 		sm:             sm,
 		db:             db,
 	}
@@ -97,7 +100,8 @@ func (h *SessionHandler) handleUserSession(w http.ResponseWriter, r *http.Reques
 	tokenBytes := make([]byte, 32)
 	if _, randErr := rand.Read(tokenBytes); randErr == nil {
 		tokenStr := hex.EncodeToString(tokenBytes)
-		if dbErr := model.SaveAPIToken(h.db, tokenStr, user.ID, user.Role, user.Username); dbErr == nil {
+		expiresAt := time.Now().UTC().Add(30 * time.Minute)
+		if dbErr := model.SaveAPIToken(h.db, tokenStr, user.ID, user.Role, user.Username, expiresAt); dbErr == nil {
 			apiToken = tokenStr
 		} else {
 			slog.Error("failed to save API token", "error", dbErr)
@@ -136,7 +140,26 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if model.IsPublic(resource.CategoryID) {
+	// NEW: If user is authenticated and has category access, auto-auth
+	userID := middleware.GetUserID(r.Context(), h.sm)
+	if userID != "" && !model.IsPublic(resource.CategoryName) {
+		userRole := middleware.GetUserRole(r.Context(), h.sm)
+		// Admin can access everything
+		if userRole == "admin" {
+			middleware.SetVideoAuth(r.Context(), h.sm)
+			respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
+			return
+		}
+		// Check if user is assigned to this category
+		authorized, err := h.categoryStore.IsUploaderAuthorized(userID, resource.CategoryName)
+		if err == nil && authorized {
+			middleware.SetVideoAuth(r.Context(), h.sm)
+			respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
+			return
+		}
+	}
+
+	if model.IsPublic(resource.CategoryName) {
 		// Public/global category — auto-auth
 		tokenBefore := h.sm.Token(r.Context())
 		slog.Debug("handleShareSession before SetVideoAuth", "token", tokenBefore, "resourceID", req.ResourceID)
@@ -161,8 +184,9 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// If password is empty and user has no access, tell them they need a share link
 	if req.Password == "" {
-		respondJSONError(w, "Password is required.", http.StatusBadRequest)
+		respondJSONError(w, "This video requires a share link to access.", http.StatusUnauthorized)
 		return
 	}
 

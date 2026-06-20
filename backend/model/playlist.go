@@ -11,9 +11,10 @@ import (
 // Playlist represents a playlist within a category.
 type Playlist struct {
 	ID           string    `json:"id"`
-	CategoryID   string    `json:"category_id"`
+	CategoryName string    `json:"category_name"`
 	PlaylistType string    `json:"playlist_type"`
 	Name         string    `json:"name"`
+	DisplayName  string    `json:"display_name"`
 	Description  string    `json:"description"`
 	CreatedBy    string    `json:"created_by"`
 	SortOrder    int       `json:"sort_order"`
@@ -36,9 +37,10 @@ func (s *PlaylistStore) Insert(p *Playlist) error {
 	ctx := context.Background()
 	return s.q.CreatePlaylist(ctx, database.CreatePlaylistParams{
 		ID:           p.ID,
-		CategoryID:   p.CategoryID,
+		CategoryName: p.CategoryName,
 		PlaylistType: p.PlaylistType,
 		Name:         p.Name,
+		DisplayName:  p.DisplayName,
 		Description:  p.Description,
 		CreatedBy:    p.CreatedBy,
 		SortOrder:    int64(p.SortOrder),
@@ -54,9 +56,10 @@ func (s *PlaylistStore) GetByID(id string) (*Playlist, error) {
 	}
 	return &Playlist{
 		ID:           p.ID,
-		CategoryID:   p.CategoryID,
+		CategoryName: p.CategoryName,
 		PlaylistType: p.PlaylistType,
 		Name:         p.Name,
+		DisplayName:  p.DisplayName,
 		Description:  p.Description,
 		CreatedBy:    p.CreatedBy,
 		SortOrder:    int(p.SortOrder),
@@ -75,9 +78,10 @@ func (s *PlaylistStore) ListByCategory(categoryID string) ([]*Playlist, error) {
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
 			ID:           p.ID,
-			CategoryID:   p.CategoryID,
+			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
 			Name:         p.Name,
+			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
 			SortOrder:    int(p.SortOrder),
@@ -129,9 +133,10 @@ func (s *PlaylistStore) ListAll() ([]*Playlist, error) {
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
 			ID:           p.ID,
-			CategoryID:   p.CategoryID,
+			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
 			Name:         p.Name,
+			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
 			SortOrder:    int(p.SortOrder),
@@ -155,9 +160,10 @@ func (s *PlaylistStore) ListPaginated(limit, offset int) ([]*Playlist, error) {
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
 			ID:           p.ID,
-			CategoryID:   p.CategoryID,
+			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
 			Name:         p.Name,
+			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
 			SortOrder:    int(p.SortOrder),
@@ -191,9 +197,10 @@ func (s *PlaylistStore) ListByType(playlistType string) ([]*Playlist, error) {
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
 			ID:           p.ID,
-			CategoryID:   p.CategoryID,
+			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
 			Name:         p.Name,
+			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
 			SortOrder:    int(p.SortOrder),
@@ -218,9 +225,10 @@ func (s *PlaylistStore) ListByTypePaginated(playlistType string, limit, offset i
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
 			ID:           p.ID,
-			CategoryID:   p.CategoryID,
+			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
 			Name:         p.Name,
+			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
 			SortOrder:    int(p.SortOrder),
@@ -241,7 +249,7 @@ func (s *PlaylistStore) CountByType(playlistType string) (int, error) {
 func (s *PlaylistStore) ListByCategoryAndType(categoryID, playlistType string) ([]*Playlist, error) {
 	ctx := context.Background()
 	items, err := s.q.ListPlaylistsByCategoryAndType(ctx, database.ListPlaylistsByCategoryAndTypeParams{
-		CategoryID:   categoryID,
+		CategoryName: categoryID,
 		PlaylistType: playlistType,
 	})
 	if err != nil {
@@ -251,9 +259,10 @@ func (s *PlaylistStore) ListByCategoryAndType(categoryID, playlistType string) (
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
 			ID:           p.ID,
-			CategoryID:   p.CategoryID,
+			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
 			Name:         p.Name,
+			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
 			SortOrder:    int(p.SortOrder),

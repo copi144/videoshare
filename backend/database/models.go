@@ -9,24 +9,34 @@ import (
 	"time"
 )
 
+type ApiToken struct {
+	Token     string
+	UserID    string
+	UserRole  string
+	Username  string
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
 type Category struct {
-	ID          string
 	Name        string
+	DisplayName string
 	Description string
 	CreatedBy   string
 	CreatedAt   time.Time
 }
 
-type CategoryUploader struct {
-	CategoryID string
-	UserID     string
+type CategoryUser struct {
+	CategoryName string
+	UserID       string
 }
 
 type Playlist struct {
 	ID           string
-	CategoryID   string
+	CategoryName string
 	PlaylistType string
 	Name         string
+	DisplayName  string
 	Description  string
 	CreatedBy    string
 	SortOrder    int64
@@ -42,14 +52,13 @@ type PlaylistVideo struct {
 type Resource struct {
 	ID              string
 	Title           string
-	PasswordHash    string
 	Filename        string
 	FileSize        int64
 	ContentType     string
 	ResourceType    string
 	Views           int64
 	UploadedBy      sql.NullString
-	CategoryID      sql.NullString
+	CategoryName    sql.NullString
 	TranscodeStatus string
 	Banned          int64
 	NoTranscode     int64
@@ -63,10 +72,20 @@ type Session struct {
 	Expiry time.Time
 }
 
-type User struct {
+type ShareLink struct {
 	ID         string
-	Username   string
-	TotpSecret string
-	Role       string
+	ResourceID string
+	Password   string
+	ExpiresAt  sql.NullTime
+	CreatedBy  sql.NullString
 	CreatedAt  time.Time
+}
+
+type User struct {
+	ID          string
+	Username    string
+	TotpSecret  string
+	DisplayName string
+	Role        string
+	CreatedAt   time.Time
 }

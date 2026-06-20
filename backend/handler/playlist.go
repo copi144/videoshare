@@ -74,7 +74,7 @@ func (h *PlaylistHandler) CreatePlaylistAPI(w http.ResponseWriter, r *http.Reque
 
 	pl := &model.Playlist{
 		ID:           uuid.New().String(),
-		CategoryID:   req.CategoryID,
+		CategoryName: req.CategoryID,
 		PlaylistType: req.PlaylistType,
 		Name:         req.Name,
 		Description:  req.Description,

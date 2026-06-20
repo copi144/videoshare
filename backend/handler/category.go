@@ -33,6 +33,7 @@ func NewCategoryHandler(categoryStore *model.CategoryStore, userStore *model.Use
 func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
 		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -52,9 +53,14 @@ func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Reque
 
 	userID := middleware.GetUserID(r.Context(), h.sm)
 
+	displayName := req.DisplayName
+	if displayName == "" {
+		displayName = req.Name
+	}
+
 	cat := &model.Category{
-		ID:          req.Name,
 		Name:        req.Name,
+		DisplayName: displayName,
 		Description: req.Description,
 		CreatedBy:   userID,
 	}
@@ -65,7 +71,7 @@ func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	slog.Info("category created via API", "id", cat.ID, "name", req.Name)
+	slog.Info("category created via API", "name", cat.Name, "display_name", cat.DisplayName)
 	respondJSONOK(w, map[string]interface{}{
 		"redirect": "/admin/categories",
 	})
@@ -184,7 +190,7 @@ func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Reque
 			// Check if Global is already in the list
 			hasGlobal := false
 			for _, c := range categories {
-				if model.IsGlobal(c.ID) {
+				if model.IsGlobal(c.Name) {
 					hasGlobal = true
 					break
 				}

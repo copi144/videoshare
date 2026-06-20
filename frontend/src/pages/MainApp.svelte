@@ -31,15 +31,14 @@
     uploaded_by: string;
     uploaded_username: string;
     filename?: string;
-    category_id: string;
     category_name: string;
     transcode_status?: string;
     banned?: boolean;
   }
 
   interface Category {
-    id: string;
     name: string;
+    display_name: string;
     description?: string;
   }
 
@@ -47,7 +46,7 @@
     id: string;
     name: string;
     description?: string;
-    category_id: string;
+    category_name: string;
   }
 
   // --- Auth ---
@@ -82,7 +81,7 @@
 
   // --- Upload form ---
 
-  let uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
+  let uploadForm = { title: '', readme: '', category_id: '', noTranscode: false };
   let selectedFile: File | null = null;
   let uploadError: string | null = null;
   let uploading = false;
@@ -92,10 +91,16 @@
   
   let showCreateLink = false;
   let createLinkResourceId = '';
-  let createLinkExpiry = 1;
+  let createLinkExpiry = 1440;
+  let createLinkExpiryMode: 'preset' | 'custom' = 'preset';
+  let createLinkCustomMinutes = 1440;
   let createLinkUrl = '';
   let createLinkLoading = false;
   let createLinkError: string | null = null;
+
+  $: if (createLinkExpiryMode === 'custom') {
+    createLinkExpiry = createLinkCustomMinutes;
+  }
 
   // --- File type filter (driven by top type selector) ---
   const videoAccept = 'video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv';
@@ -124,19 +129,18 @@
     showConfirm = true;
   }
 
-  $: selectedCategory = categories.find((c) => c.id === uploadForm.category_id);
-  $: isGlobal = selectedCategory ? selectedCategory.id === 'global' : false;
+  $: selectedCategory = categories.find((c) => c.name === uploadForm.category_id);
 
   // --- Data loading ---
 
   async function loadResources() {
     error = null;
     try {
-      const params: { limit: number; offset: number; category_id?: string; playlist_id?: string; resource_type?: string } = { limit, offset };
+      const params: { limit: number; offset: number; category_name?: string; playlist_id?: string; resource_type?: string } = { limit, offset };
       if (selectedPlaylistId) {
         params.playlist_id = selectedPlaylistId;
       } else if (selectedCategoryId) {
-        params.category_id = selectedCategoryId;
+        params.category_name = selectedCategoryId;
       }
       if (selectedResourceType !== 'all') {
         params.resource_type = selectedResourceType;
@@ -160,7 +164,7 @@
 
   async function loadPlaylists() {
     try {
-      const data = await listPlaylists({ category_id: selectedCategoryId, playlist_type: selectedResourceType });
+      const data = await listPlaylists({ category_name: selectedCategoryId, playlist_type: selectedResourceType });
       playlists = data.playlists;
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to load playlists.';
@@ -217,10 +221,6 @@
       uploadError = 'Please select a category.';
       return;
     }
-    if (!isGlobal && !uploadForm.password.trim()) {
-      uploadError = 'Password is required for non-public categories.';
-      return;
-    }
 
     uploading = true;
     try {
@@ -230,11 +230,8 @@
       fd.append('readme', uploadForm.readme.trim());
       fd.append('category_id', uploadForm.category_id);
       fd.append('no_transcode', uploadForm.noTranscode ? '1' : '0');
-      if (uploadForm.password.trim()) {
-        fd.append('password', uploadForm.password.trim());
-      }
       await uploadVideo(fd);
-      uploadForm = { title: '', readme: '', category_id: '', password: '', noTranscode: false };
+      uploadForm = { title: '', readme: '', category_id: '', noTranscode: false };
       selectedFile = null;
       await loadResources();
     } catch (e: unknown) {
@@ -376,7 +373,9 @@
 
   async function openCreateLink(id: string) {
     createLinkResourceId = id;
-    createLinkExpiry = 1;
+    createLinkExpiry = 1440;
+    createLinkExpiryMode = 'preset';
+    createLinkCustomMinutes = 1440;
     createLinkUrl = '';
     createLinkError = null;
     showCreateLink = true;
@@ -401,6 +400,12 @@
     }
   }
 
+  function onExpiryModeChange() {
+    if (createLinkExpiryMode === 'custom') {
+      createLinkCustomMinutes = createLinkExpiry;
+    }
+  }
+
   function closeCreateLink() {
     showCreateLink = false;
     createLinkResourceId = '';
@@ -412,6 +417,26 @@
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function formatDuration(minutes: number): string {
+    if (minutes < 1) return '0 minutes';
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    if (minutes < 1440) {
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      if (mins === 0) return `${hours} hour${hours !== 1 ? 's' : ''}`;
+      return `${hours} hour${hours !== 1 ? 's' : ''}, ${mins} minute${mins !== 1 ? 's' : ''}`;
+    }
+    const days = Math.floor(minutes / 1440);
+    const remaining = minutes % 1440;
+    const hours = Math.floor(remaining / 60);
+    const mins = remaining % 60;
+    const parts: string[] = [];
+    parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+    if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
+    if (mins > 0) parts.push(`${mins} minute${mins !== 1 ? 's' : ''}`);
+    return parts.join(', ');
   }
 
   function setError(msg: string) {
@@ -489,8 +514,8 @@
           <div class="action-bar-left">
             <select bind:value={selectedCategoryId} on:change={onCategoryChange}>
               {#each categories as cat}
-                <option value={cat.id}>
-                  {cat.name}{cat.id === 'global' ? ' (public)' : ''}
+                <option value={cat.name}>
+                  {cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}
                 </option>
               {/each}
             </select>
@@ -582,7 +607,7 @@
                       <td class="py-2 pr-4">{res.views}</td>
                       <td class="py-2 pr-4 text-gray-500">{formatSize(res.file_size)}</td>
                       <td class="py-2 pr-4 share-col">
-                        {#if res.category_id === 'global'}
+                        {#if res.category_name === 'global'}
                           <button
                             class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
                             type="button"
@@ -671,8 +696,8 @@
               <select id="category" name="category_id" bind:value={uploadForm.category_id} class="upload-category-select" required>
                 <option value="">&mdash; Category &mdash;</option>
                 {#each categories as cat}
-                  <option value={cat.id}>
-                    {cat.name}{cat.id === 'global' ? ' (public)' : ''}
+                  <option value={cat.name}>
+                    {cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}
                   </option>
                 {/each}
               </select>
@@ -693,11 +718,6 @@
                 Skip transcoding
               </label>
             </div>
-            {#if !isGlobal && uploadForm.category_id}
-              <div class="upload-row-actions">
-                <input type="text" id="password" name="password" bind:value={uploadForm.password} placeholder="Password (required for this category)" class="upload-password-input" />
-              </div>
-            {/if}
             {#if uploadError}
               <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{uploadError}</div>
             {/if}
@@ -741,12 +761,42 @@
             {:else}
               <div class="space-y-3">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Link expires after</label>
-                <select bind:value={createLinkExpiry} class="w-full">
-                  <option value={1}>1 day</option>
-                  <option value={3}>3 days</option>
-                  <option value={7}>7 days</option>
-                  <option value={30}>30 days</option>
-                </select>
+
+                <div class="flex gap-4 mb-2">
+                  <label class="inline-flex items-center gap-1.5 text-sm">
+                    <input type="radio" name="expiryMode" value="preset" bind:group={createLinkExpiryMode} on:change={onExpiryModeChange} />
+                    Preset
+                  </label>
+                  <label class="inline-flex items-center gap-1.5 text-sm">
+                    <input type="radio" name="expiryMode" value="custom" bind:group={createLinkExpiryMode} on:change={onExpiryModeChange} />
+                    Custom
+                  </label>
+                </div>
+
+                {#if createLinkExpiryMode === 'preset'}
+                  <select bind:value={createLinkExpiry} class="w-full">
+                    <option value={1}>1 minute</option>
+                    <option value={5}>5 minutes</option>
+                    <option value={30}>30 minutes</option>
+                    <option value={60}>1 hour</option>
+                    <option value={360}>6 hours</option>
+                    <option value={720}>12 hours</option>
+                    <option value={1440}>1 day</option>
+                    <option value={4320}>3 days</option>
+                    <option value={10080}>7 days</option>
+                    <option value={43200}>30 days</option>
+                    <option value={129600}>90 days</option>
+                    <option value={525600}>365 days</option>
+                  </select>
+                {:else}
+                  <div>
+                    <input type="number" bind:value={createLinkCustomMinutes} min={1} max={525600} class="w-full" />
+                    <p class="text-xs text-gray-500 mt-1">Minutes (1–525600)</p>
+                    <p class="text-sm text-gray-700 mt-1">{formatDuration(createLinkCustomMinutes)}</p>
+                  </div>
+                {/if}
+                
+                <p class="text-xs text-gray-400">{formatDuration(createLinkExpiry)}</p>
                 
                 {#if createLinkError}
                   <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{createLinkError}</div>
@@ -1012,10 +1062,6 @@
     color: #6b7280;
     white-space: nowrap;
     margin-left: auto;
-  }
-
-  .upload-password-input {
-    max-width: 300px;
   }
 
   .upload-submit-btn {

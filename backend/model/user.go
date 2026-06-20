@@ -10,11 +10,12 @@ import (
 
 // User represents a system user.
 type User struct {
-	ID         string    `json:"id"`
-	Username   string    `json:"username"`
-	TotpSecret string    `json:"-"`
-	Role       string    `json:"role"` // "admin" or "uploader"
-	CreatedAt  time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	Username    string    `json:"username"`
+	TotpSecret  string    `json:"-"`
+	DisplayName string    `json:"display_name"`
+	Role        string    `json:"role"` // "admin" or "uploader"
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // UserStore provides CRUD operations for users.
@@ -32,10 +33,11 @@ func NewUserStore(db *sql.DB) *UserStore {
 func (s *UserStore) Insert(u *User) error {
 	ctx := context.Background()
 	return s.q.CreateUser(ctx, database.CreateUserParams{
-		ID:         u.ID,
-		Username:   u.Username,
-		TotpSecret: u.TotpSecret,
-		Role:       u.Role,
+		ID:          u.ID,
+		Username:    u.Username,
+		TotpSecret:  u.TotpSecret,
+		DisplayName: u.DisplayName,
+		Role:        u.Role,
 	})
 }
 
@@ -47,11 +49,12 @@ func (s *UserStore) GetByID(id string) (*User, error) {
 		return nil, err
 	}
 	return &User{
-		ID:         u.ID,
-		Username:   u.Username,
-		TotpSecret: u.TotpSecret,
-		Role:       u.Role,
-		CreatedAt:  u.CreatedAt,
+		ID:          u.ID,
+		Username:    u.Username,
+		TotpSecret:  u.TotpSecret,
+		DisplayName: u.DisplayName,
+		Role:        u.Role,
+		CreatedAt:   u.CreatedAt,
 	}, nil
 }
 
@@ -63,11 +66,12 @@ func (s *UserStore) GetByUsername(username string) (*User, error) {
 		return nil, err
 	}
 	return &User{
-		ID:         u.ID,
-		Username:   u.Username,
-		TotpSecret: u.TotpSecret,
-		Role:       u.Role,
-		CreatedAt:  u.CreatedAt,
+		ID:          u.ID,
+		Username:    u.Username,
+		TotpSecret:  u.TotpSecret,
+		DisplayName: u.DisplayName,
+		Role:        u.Role,
+		CreatedAt:   u.CreatedAt,
 	}, nil
 }
 
@@ -81,11 +85,12 @@ func (s *UserStore) List() ([]*User, error) {
 	users := make([]*User, 0, len(items))
 	for _, u := range items {
 		users = append(users, &User{
-			ID:         u.ID,
-			Username:   u.Username,
-			TotpSecret: u.TotpSecret,
-			Role:       u.Role,
-			CreatedAt:  u.CreatedAt,
+			ID:          u.ID,
+			Username:    u.Username,
+			TotpSecret:  u.TotpSecret,
+			DisplayName: u.DisplayName,
+			Role:        u.Role,
+			CreatedAt:   u.CreatedAt,
 		})
 	}
 	return users, nil
@@ -96,4 +101,16 @@ func GetAdminUserID(db *sql.DB) (string, error) {
 	var id string
 	err := db.QueryRow("SELECT id FROM users WHERE role = 'admin' LIMIT 1").Scan(&id)
 	return id, err
+}
+
+// Delete removes a user by ID.
+func (s *UserStore) Delete(id string) error {
+	_, err := s.db.Exec("DELETE FROM users WHERE id = ?", id)
+	return err
+}
+
+// UpdateTotpSecret updates the TOTP secret for a user.
+func (s *UserStore) UpdateTotpSecret(id, secret string) error {
+	_, err := s.db.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", secret, id)
+	return err
 }

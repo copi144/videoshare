@@ -26,18 +26,15 @@ func IsPublic(categoryID string) bool {
 	return IsGlobal(categoryID)
 }
 
-// RequiresPassword reports whether a per-video password is required for this category.
+// RequiresPassword reports whether this category is non-global (requires authorization or share link).
 func RequiresPassword(categoryID string) bool {
 	return !IsGlobal(categoryID)
 }
 
 // Category represents a video category.
-//
-// Category.ID is the user-supplied validated name (slug) and is used directly as the primary key.
-// Renaming a category produces a new ID.
 type Category struct {
-	ID          string    `json:"id"`
 	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name"`
 	Description string    `json:"description"`
 	CreatedBy   string    `json:"created_by"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -58,8 +55,8 @@ func NewCategoryStore(db *sql.DB) *CategoryStore {
 func (s *CategoryStore) Insert(c *Category) error {
 	ctx := context.Background()
 	return s.q.CreateCategory(ctx, database.CreateCategoryParams{
-		ID:          c.ID,
 		Name:        c.Name,
+		DisplayName: c.DisplayName,
 		Description: c.Description,
 		CreatedBy:   c.CreatedBy,
 	})
@@ -73,8 +70,8 @@ func (s *CategoryStore) GetByID(id string) (*Category, error) {
 		return nil, err
 	}
 	return &Category{
-		ID:          c.ID,
 		Name:        c.Name,
+		DisplayName: c.DisplayName,
 		Description: c.Description,
 		CreatedBy:   c.CreatedBy,
 		CreatedAt:   c.CreatedAt,
@@ -91,8 +88,8 @@ func (s *CategoryStore) List() ([]*Category, error) {
 	cats := make([]*Category, 0, len(items))
 	for _, c := range items {
 		cats = append(cats, &Category{
-			ID:          c.ID,
 			Name:        c.Name,
+			DisplayName: c.DisplayName,
 			Description: c.Description,
 			CreatedBy:   c.CreatedBy,
 			CreatedAt:   c.CreatedAt,
@@ -111,8 +108,8 @@ func (s *CategoryStore) ListByUploader(userID string) ([]*Category, error) {
 	cats := make([]*Category, 0, len(items))
 	for _, c := range items {
 		cats = append(cats, &Category{
-			ID:          c.ID,
 			Name:        c.Name,
+			DisplayName: c.DisplayName,
 			Description: c.Description,
 			CreatedBy:   c.CreatedBy,
 			CreatedAt:   c.CreatedAt,
@@ -134,8 +131,8 @@ func (s *CategoryStore) ListPaginated(limit, offset int) ([]*Category, error) {
 	cats := make([]*Category, 0, len(items))
 	for _, c := range items {
 		cats = append(cats, &Category{
-			ID:          c.ID,
 			Name:        c.Name,
+			DisplayName: c.DisplayName,
 			Description: c.Description,
 			CreatedBy:   c.CreatedBy,
 			CreatedAt:   c.CreatedAt,
@@ -165,8 +162,8 @@ func (s *CategoryStore) ListByUploaderPaginated(userID string, limit, offset int
 	cats := make([]*Category, 0, len(items))
 	for _, c := range items {
 		cats = append(cats, &Category{
-			ID:          c.ID,
 			Name:        c.Name,
+			DisplayName: c.DisplayName,
 			Description: c.Description,
 			CreatedBy:   c.CreatedBy,
 			CreatedAt:   c.CreatedAt,
@@ -196,9 +193,9 @@ func (s *CategoryStore) AssignUploaders(categoryID string, userIDs []string) err
 		return err
 	}
 	for _, uid := range userIDs {
-		if err := qtx.AddCategoryUploader(ctx, database.AddCategoryUploaderParams{
-			CategoryID: categoryID,
-			UserID:     uid,
+		if err := qtx.AddUploader(ctx, database.AddUploaderParams{
+			CategoryName: categoryID,
+			UserID:       uid,
 		}); err != nil {
 			return err
 		}
@@ -209,15 +206,15 @@ func (s *CategoryStore) AssignUploaders(categoryID string, userIDs []string) err
 // GetUploaders returns user IDs assigned to a category.
 func (s *CategoryStore) GetUploaders(categoryID string) ([]string, error) {
 	ctx := context.Background()
-	return s.q.GetCategoryUploaders(ctx, categoryID)
+	return s.q.ListUploaders(ctx, categoryID)
 }
 
 // IsUploaderAuthorized checks if a user is assigned to upload to a category.
 func (s *CategoryStore) IsUploaderAuthorized(userID, categoryID string) (bool, error) {
 	ctx := context.Background()
 	count, err := s.q.IsUploaderAuthorized(ctx, database.IsUploaderAuthorizedParams{
-		CategoryID: categoryID,
-		UserID:     userID,
+		CategoryName: categoryID,
+		UserID:       userID,
 	})
 	if err != nil {
 		return false, err

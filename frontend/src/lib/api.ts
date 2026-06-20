@@ -83,9 +83,8 @@ export interface Resource {
   created_at: string;
   updated_at: string;
   uploaded_by: string;
-  category_id: string;
+  category_name: string;
   uploaded_username?: string;
-  category_name?: string;
 }
 
 export interface ResourceDetail extends Resource {
@@ -93,13 +92,13 @@ export interface ResourceDetail extends Resource {
 }
 
 // Resources
-export const listResources = (params?: {limit?: number; offset?: number; category_id?: string; playlist_id?: string; resource_type?: string}) => {
+export const listResources = (params?: {limit?: number; offset?: number; category_name?: string; playlist_id?: string; resource_type?: string}) => {
   let path = '/api/resources';
   if (params) {
     const qs = new URLSearchParams();
     if (params.limit !== undefined) qs.set('limit', String(params.limit));
     if (params.offset !== undefined) qs.set('offset', String(params.offset));
-    if (params.category_id !== undefined) qs.set('category_id', params.category_id);
+    if (params.category_name !== undefined) qs.set('category_name', params.category_name);
     if (params.playlist_id !== undefined) qs.set('playlist_id', params.playlist_id);
     if (params.resource_type !== undefined) qs.set('resource_type', params.resource_type);
     const query = qs.toString();
@@ -126,9 +125,6 @@ export const banResource = (id: string) =>
 export const updateReadme = (resourceId: string, readme: string) =>
   request<{ok: boolean}>('PUT', `/api/resources/${resourceId}/readme`, { readme });
 
-export const shareAuth = (id: string, password: string) =>
-  request<{ok: boolean; redirect?: string}>('POST', `/api/s/${id}/auth`, { password });
-
 export const createSession = (type: 'user' | 'share' | 'token', data: Record<string, any>) =>
   request<{ok: boolean; redirect?: string; api_token?: string; user?: {id: string; username: string; role: string}}>('POST', '/api/session', { type, ...data });
 
@@ -145,23 +141,23 @@ export const listCategories = (params?: {limit?: number; offset?: number}) => {
   return request<{categories: any[]; total: number; limit: number; offset: number}>('GET', path);
 };
 
-export const createCategory = (name: string, description: string) =>
-  request<{ok: boolean; redirect?: string}>('POST', '/api/categories', { name, description });
+export const createCategory = (name: string, displayName: string, description: string) =>
+  request<{ok: boolean; redirect?: string}>('POST', '/api/categories', { name, display_name: displayName, description });
 
-export const deleteCategory = (id: string) =>
-  request<{ok: boolean}>('DELETE', `/api/categories/${id}`);
+export const deleteCategory = (name: string) =>
+  request<{ok: boolean}>('DELETE', `/api/categories/${name}`);
 
-export const assignUploaders = (categoryId: string, userIds: string[]) =>
-  request<{ok: boolean; redirect?: string}>('POST', `/api/categories/${categoryId}/uploaders`, { user_ids: userIds });
+export const assignUploaders = (categoryName: string, userIds: string[]) =>
+  request<{ok: boolean; redirect?: string}>('POST', `/api/categories/${categoryName}/uploaders`, { user_ids: userIds });
 
 // Playlists
-export const listPlaylists = (params?: {limit?: number; offset?: number; category_id?: string; playlist_type?: string}) => {
+export const listPlaylists = (params?: {limit?: number; offset?: number; category_name?: string; playlist_type?: string}) => {
   let path = '/api/playlists';
   if (params) {
     const qs = new URLSearchParams();
     if (params.limit !== undefined) qs.set('limit', String(params.limit));
     if (params.offset !== undefined) qs.set('offset', String(params.offset));
-    if (params.category_id !== undefined) qs.set('category_id', params.category_id);
+    if (params.category_name !== undefined) qs.set('category_name', params.category_name);
     if (params.playlist_type !== undefined) qs.set('playlist_type', params.playlist_type);
     const query = qs.toString();
     if (query) path += `?${query}`;
@@ -169,8 +165,8 @@ export const listPlaylists = (params?: {limit?: number; offset?: number; categor
   return request<{playlists: any[]; total: number; limit: number; offset: number}>('GET', path);
 };
 
-export const createPlaylist = (name: string, description: string, categoryId: string, playlistType?: string) =>
-  request<{ok: boolean; redirect?: string}>('POST', '/api/playlists', { name, description, category_id: categoryId, playlist_type: playlistType });
+export const createPlaylist = (name: string, displayName: string, description: string, categoryName: string, playlistType?: string) =>
+  request<{ok: boolean; redirect?: string}>('POST', '/api/playlists', { name, display_name: displayName, description, category_name: categoryName, playlist_type: playlistType });
 
 export const deletePlaylist = (id: string) =>
   request<{ok: boolean}>('DELETE', `/api/playlists/${id}`);
@@ -182,8 +178,8 @@ export const removeVideoFromPlaylist = (playlistId: string, resourceId: string) 
   request<{ok: boolean}>('DELETE', `/api/playlists/${playlistId}/videos/${resourceId}`);
 
 // Share Links
-export const createShareLink = (resourceId: string, expiresInDays: number) =>
-  request<{ok: boolean; url: string; id: string; password: string; expires_at: string | null}>('POST', '/api/share-links', { resource_id: resourceId, expires_in_days: expiresInDays });
+export const createShareLink = (resourceId: string, expiresInMinutes: number) =>
+  request<{ok: boolean; url: string; id: string; password: string; expires_at: string}>('POST', '/api/share-links', { resource_id: resourceId, expires_in_minutes: expiresInMinutes });
 
 export const listShareLinks = (resourceId: string) =>
   request<{share_links: Array<{id: string; resource_id: string; expires_at: string | null; created_by: string; created_at: string}>}>('GET', `/api/share-links?resource_id=${resourceId}`);
@@ -192,8 +188,17 @@ export const deleteShareLink = (id: string) =>
   request<{ok: boolean}>('DELETE', `/api/share-links/${id}`);
 
 // Users
-export const createUser = (username: string) =>
-  request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { username });
+export const createUser = (username: string, role: string, displayName: string) =>
+  request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { username, role, display_name: displayName });
+
+export const listUsers = () =>
+  request<{users: Array<{id: string; username: string; display_name: string; role: string; created_at: string}>}>('GET', '/api/users');
+
+export const deleteUser = (id: string) =>
+  request<{ok: boolean}>('DELETE', `/api/users/${id}`);
+
+export const resetTOTP = (id: string) =>
+  request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string}>('POST', `/api/users/${id}/reset-totp`);
 
 // Me
 
