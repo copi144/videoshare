@@ -28,7 +28,7 @@ func APIAuth(db *sql.DB, sm *scs.SessionManager) func(http.Handler) http.Handler
 			// /api/login — public login endpoint
 			// /api/session — session creation endpoint
 			// /api/s/ — share-link authentication
-			if r.URL.Path == "/api/login" || r.URL.Path == "/api/session" || strings.HasPrefix(r.URL.Path, "/api/s/") {
+			if r.URL.Path == "/api/login" || r.URL.Path == "/api/session" || strings.HasPrefix(r.URL.Path, "/api/s/") || strings.HasPrefix(r.URL.Path, "/api/share-links/") {
 				next.ServeHTTP(w, r)
 				return
 			}

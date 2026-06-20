@@ -30,7 +30,7 @@ async function request<T>(method: string, path: string, body?: any): Promise<T> 
   };
   
   // Add API token if available (not needed for login/share-auth which bootstrap it)
-  if (_apiToken && path !== '/api/login' && !path.startsWith('/api/s/')) {
+  if (_apiToken && path !== '/api/login' && !path.startsWith('/api/s/') && !path.startsWith('/api/share-links/')) {
     (opts.headers as Record<string, string>)['Authorization'] = `Bearer ${_apiToken}`;
   }
   
