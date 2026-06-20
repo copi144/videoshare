@@ -14,6 +14,7 @@
     createShareLink,
     listShareLinks,
     deleteShareLink,
+    getShareLinkResources,
   } from '../lib/api';
   import TabHistory from './TabHistory.svelte';
   import Categories from './Categories.svelte';
@@ -87,6 +88,15 @@
 
   export let initialCategory: string | null = null;
   export let initialPlaylist: string | null = null;
+
+  // --- Shared mode ---
+
+  export let sharedMode = false;
+  export let shareTargetType: string | null = null;
+  export let shareTargetId: string | null = null;
+  export let shareTargetName: string | null = null;
+  export let shareLinkId: string | null = null;
+  export let shareLinkPassword: string | null = null;
 
   // --- Tab state ---
 
@@ -206,9 +216,14 @@
   async function loadResources() {
     error = null;
     try {
+      if (sharedMode && shareLinkId && shareLinkPassword) {
+        const data = await getShareLinkResources(shareLinkId, shareLinkPassword);
+        resources = data.resources || [];
+        total = resources.length;
+        return;
+      }
       const params: { limit: number; offset: number; category_name?: string; resource_type?: string } = { limit, offset };
       if (selectedPlaylistComposite) {
-        // Backend doesn't filter by playlist yet — pass category_name for context
         const plInfo = parsePlaylistComposite(selectedPlaylistComposite);
         params.category_name = plInfo.category;
       } else if (selectedCategoryId) {
@@ -256,6 +271,10 @@
   }
 
   onMount(async () => {
+    if (sharedMode) {
+      await loadResources();
+      return;
+    }
     await checkAuth();
     if ($isAuthenticated) {
       startHeartbeat();
@@ -629,35 +648,37 @@
       >
         Browse
       </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'history'}
-        on:click={() => { activeTab = 'history'; }}
-      >
-        History
-      </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'categories'}
-        on:click={() => { activeTab = 'categories'; }}
-      >
-        Categories
-      </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'playlists'}
-        on:click={() => { activeTab = 'playlists'; }}
-      >
-        Playlists
-      </button>
-              {#if isAdmin}
+      {#if !sharedMode}
         <button
           class="tab"
-          class:active={activeTab === 'users'}
-          on:click={() => { activeTab = 'users'; }}
+          class:active={activeTab === 'history'}
+          on:click={() => { activeTab = 'history'; }}
         >
-          Users
+          History
         </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'categories'}
+          on:click={() => { activeTab = 'categories'; }}
+        >
+          Categories
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'playlists'}
+          on:click={() => { activeTab = 'playlists'; }}
+        >
+          Playlists
+        </button>
+        {#if isAdmin}
+          <button
+            class="tab"
+            class:active={activeTab === 'users'}
+            on:click={() => { activeTab = 'users'; }}
+          >
+            Users
+          </button>
+        {/if}
       {/if}
     </div>
     <div class="user-section">
@@ -680,22 +701,44 @@
 
       {#if activeTab === 'browse'}
         <div class="rounded-lg border border-gray-200 bg-white p-4 mb-4">
+          {#if sharedMode}
+            <div class="rounded-lg border border-indigo-200 bg-indigo-50 p-4 mb-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-indigo-600 font-medium">
+                    Browsing shared {shareTargetType}: {shareTargetName}
+                  </p>
+                  <p class="text-xs text-indigo-500 mt-1">
+                    {resources.length} file{resources.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+          {/if}
           <!-- Action bar -->
           <div class="action-bar">
           <div class="action-bar-left">
-            <select bind:value={selectedCategoryId} on:change={onCategoryChange}>
-              {#each categories as cat}
-                <option value={cat.name}>
-                  {cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}
-                </option>
-              {/each}
-            </select>
-            <select bind:value={selectedPlaylistComposite} on:change={() => { offset = 0; loadResources(); }}>
-              <option value="">All playlists</option>
-              {#each playlists as pl}
-                <option value="{pl.category_name}:{pl.name}">{pl.name} ({pl.category_name})</option>
-              {/each}
-            </select>
+            {#if sharedMode}
+              <span class="inline-flex items-center px-3 py-1 text-sm text-gray-700 bg-gray-50 rounded-md border border-gray-200">
+                {shareTargetName}
+              </span>
+            {:else}
+              <select bind:value={selectedCategoryId} on:change={onCategoryChange}>
+                {#each categories as cat}
+                  <option value={cat.name}>
+                    {cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}
+                  </option>
+                {/each}
+              </select>
+            {/if}
+            {#if !sharedMode}
+              <select bind:value={selectedPlaylistComposite} on:change={() => { offset = 0; loadResources(); }}>
+                <option value="">All playlists</option>
+                {#each playlists as pl}
+                  <option value="{pl.category_name}:{pl.name}">{pl.name} ({pl.category_name})</option>
+                {/each}
+              </select>
+            {/if}
             <select bind:value={selectedResourceType} on:change={onTypeChange}>
               <option value="all">All file types</option>
               <option value="video">Video</option>

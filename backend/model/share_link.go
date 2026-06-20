@@ -123,3 +123,41 @@ func (s *ShareLinkStore) Delete(id string) error {
 	_, err := s.db.Exec(`DELETE FROM share_links WHERE id = ?`, id)
 	return err
 }
+
+// IsResourceInScope checks if a resource is within the scope of a share link target.
+// For category shares: checks resource_categories table.
+// For playlist shares: checks playlist_videos table (via composite FK).
+func (s *ShareLinkStore) IsResourceInScope(resourceID, targetType, targetID string) bool {
+	if targetType == "category" {
+		var count int
+		err := s.db.QueryRow(
+			"SELECT COUNT(*) FROM resource_categories WHERE resource_id = ? AND category_name = ?",
+			resourceID, targetID,
+		).Scan(&count)
+		if err != nil {
+			return false
+		}
+		return count > 0
+	}
+	if targetType == "playlist" {
+		// Need the category_name from the playlist for composite FK lookup
+		var categoryName string
+		err := s.db.QueryRow(
+			"SELECT category_name FROM playlists WHERE name = ? LIMIT 1",
+			targetID,
+		).Scan(&categoryName)
+		if err != nil {
+			return false
+		}
+		var count int
+		err = s.db.QueryRow(
+			"SELECT COUNT(*) FROM playlist_videos WHERE playlist_category_name = ? AND playlist_name = ? AND resource_id = ?",
+			categoryName, targetID, resourceID,
+		).Scan(&count)
+		if err != nil {
+			return false
+		}
+		return count > 0
+	}
+	return false
+}

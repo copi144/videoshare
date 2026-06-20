@@ -26,10 +26,11 @@ type SessionHandler struct {
 	categoryStore      *model.CategoryStore
 	sm                 *scs.SessionManager
 	db                 *sql.DB
+	shareLinkStore     *model.ShareLinkStore
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, shareResourceStore *model.ShareResourceStore, categoryStore *model.CategoryStore, sm *scs.SessionManager, db *sql.DB) *SessionHandler {
+func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, shareResourceStore *model.ShareResourceStore, categoryStore *model.CategoryStore, sm *scs.SessionManager, db *sql.DB, shareLinkStore *model.ShareLinkStore) *SessionHandler {
 	return &SessionHandler{
 		userStore:          userStore,
 		resourceStore:      resourceStore,
@@ -37,6 +38,7 @@ func NewSessionHandler(userStore *model.UserStore, resourceStore *model.Resource
 		categoryStore:      categoryStore,
 		sm:                 sm,
 		db:                 db,
+		shareLinkStore:     shareLinkStore,
 	}
 }
 
@@ -137,6 +139,20 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 	if resource.Banned {
 		respondJSONError(w, "This video has been banned", http.StatusGone)
 		return
+	}
+
+	// If session already has share link scope (from category/playlist share link auth),
+	// check if the requested resource is within scope
+	targetType := h.sm.GetString(r.Context(), "share_target_type")
+	targetID := h.sm.GetString(r.Context(), "share_target_id")
+	if targetType != "" && targetID != "" && req.Password == "" {
+		if h.shareLinkStore.IsResourceInScope(req.ResourceID, targetType, targetID) {
+			slog.Debug("share link session: resource in scope, auto-auth",
+				"resource_id", req.ResourceID, "target_type", targetType, "target_id", targetID)
+			middleware.SetVideoAuth(r.Context(), h.sm)
+			respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
+			return
+		}
 	}
 
 	// Load resource categories to determine access.

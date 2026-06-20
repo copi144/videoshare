@@ -59,8 +59,9 @@ func NewRouter(sm *scs.SessionManager,
 	userH := NewUserHandler(userStore, sm, db)
 	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, userStore, playlistStore, transcodeQueue, ffmpegPath)
 	shareResourceH := NewShareResourceHandler(shareResourceStore, resourceStore)
-	shareLinkH := NewShareLinkHandler(shareLinkStore, categoryStore, playlistStore, resourceStore)
-	sessionH := NewSessionHandler(userStore, resourceStore, shareResourceStore, categoryStore, sm, db)
+	shareLinkH := NewShareLinkHandler(shareLinkStore, categoryStore, playlistStore, resourceStore, sm)
+	shareScopeMW := middleware.RequireShareScope(sm, shareLinkStore)
+	sessionH := NewSessionHandler(userStore, resourceStore, shareResourceStore, categoryStore, sm, db, shareLinkStore)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
 	categoryH := NewCategoryHandler(categoryStore, userStore, sm)
@@ -138,20 +139,20 @@ func NewRouter(sm *scs.SessionManager,
 	r.Get("/api/share-links/{id}/resources", shareLinkH.GetSharedResourcesAPI)
 
 	// Video streaming — accessible by both system users and share-link viewers
-	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}", streamH.ServeVideo)
+	r.With(middleware.RequireUserOrVideoAuth(sm), shareScopeMW).Get("/v/{id}", streamH.ServeVideo)
 
 	// HLS streaming — accessible by both system users and share-link viewers
-	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}/hls/*", streamH.ServeHLS)
+	r.With(middleware.RequireUserOrVideoAuth(sm), shareScopeMW).Get("/v/{id}/hls/*", streamH.ServeHLS)
 
 	// Download — accessible by both system users and share-link viewers
-	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}/download", streamH.ServeDownload)
+	r.With(middleware.RequireUserOrVideoAuth(sm), shareScopeMW).Get("/v/{id}/download", streamH.ServeDownload)
 
 	// Audio/Image streaming — accessible by both system users and share-link viewers
-	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/a/{id}", streamH.ServeAudio)
-	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/i/{id}", streamH.ServeImage)
+	r.With(middleware.RequireUserOrVideoAuth(sm), shareScopeMW).Get("/a/{id}", streamH.ServeAudio)
+	r.With(middleware.RequireUserOrVideoAuth(sm), shareScopeMW).Get("/i/{id}", streamH.ServeImage)
 
 	// Resource detail — accessible by both system users and share-link viewers
-	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/api/resources/{id}", resourceH.GetResourceAPI)
+	r.With(middleware.RequireUserOrVideoAuth(sm), shareScopeMW).Get("/api/resources/{id}", resourceH.GetResourceAPI)
 
 	// SPA catch-all — serve the single-page application for all unmatched routes.
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

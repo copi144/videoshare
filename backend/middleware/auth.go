@@ -6,6 +6,9 @@ import (
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/go-chi/chi/v5"
+
+	"videoshare/model"
 )
 
 const (
@@ -166,6 +169,62 @@ func RequireAdmin(sm *scs.SessionManager) func(http.Handler) http.Handler {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireShareScope returns middleware that restricts resource access to what is within
+// the share link scope (for session-authenticated, non-user requests).
+// Logged-in users bypass scope checks entirely.
+func RequireShareScope(sm *scs.SessionManager, store *model.ShareLinkStore) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Logged-in users bypass scope
+			if GetUserID(r.Context(), sm) != "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check if session has share scope
+			targetType := sm.GetString(r.Context(), "share_target_type")
+			targetID := sm.GetString(r.Context(), "share_target_id")
+			if targetType == "" || targetID == "" {
+				// No scope = blanket access (per-resource share visitor)
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Extract resource ID from URL
+			resourceID := chi.URLParam(r, "id")
+			if resourceID == "" {
+				slog.Warn("RequireShareScope: no resource ID in URL", "path", r.URL.Path)
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			// Check cache first (authorized_resources map in session)
+			authMap, ok := sm.Get(r.Context(), "authorized_resources").(map[string]bool)
+			if ok && authMap[resourceID] {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check scope via database
+			if !store.IsResourceInScope(resourceID, targetType, targetID) {
+				slog.Warn("RequireShareScope: resource not in scope",
+					"resource_id", resourceID, "target_type", targetType, "target_id", targetID)
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			// Cache the result
+			if authMap == nil {
+				authMap = make(map[string]bool)
+			}
+			authMap[resourceID] = true
+			sm.Put(r.Context(), "authorized_resources", authMap)
+
 			next.ServeHTTP(w, r)
 		})
 	}

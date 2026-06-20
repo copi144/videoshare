@@ -206,7 +206,7 @@ export const deleteTargetShareLink = (id: string) =>
 
 // Auth for /#/s/{id}/{password} links
 export const authenticateShareLink = (id: string, password: string) =>
-  request<{ok: boolean; redirect: string; target_type: string; target_id: string}>('POST', `/api/share-links/${id}/auth`, { password });
+  request<{ok: boolean; redirect: string; target_type: string; target_id: string; target_name: string}>('POST', `/api/share-links/${id}/auth`, { password });
 
 export const getShareLinkResources = (id: string, password: string, playlistName?: string) => {
   let path = `/api/share-links/${id}/resources?password=${encodeURIComponent(password)}`;
