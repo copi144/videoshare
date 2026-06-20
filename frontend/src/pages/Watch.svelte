@@ -96,7 +96,7 @@
   <h2>{resource.title}</h2>
   {#if resource.resource_type === 'audio'}
     <div class="rounded-lg border border-gray-200 bg-white p-4">
-      <audio controls class="w-full" bind:this={videoRef}>
+      <audio controls class="w-full" preload="metadata" bind:this={videoRef}>
         <source src="/a/{resource.id}" type={resource.content_type} />
         Your browser does not support the audio element.
       </audio>
@@ -107,7 +107,7 @@
     </div>
   {:else}
     <div class="rounded-lg border border-gray-200 bg-white p-4">
-      <video controls bind:this={videoRef} style="width: 100%; max-height: 80vh;">
+      <video controls preload="metadata" bind:this={videoRef} style="width: 100%; max-height: 80vh;">
         <track kind="captions" label="No captions available" />
         Your browser does not support the video tag.
       </video>
