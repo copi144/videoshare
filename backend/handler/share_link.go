@@ -221,7 +221,7 @@ func (h *ShareLinkHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Reques
 }
 
 // GetSharedResourcesAPI returns resources for a share link (public, password-protected).
-// GET /api/share-links/{id}/resources?password=xxx
+// GET /api/share-links/{id}/resources?password=xxx[&playlist_name=xxx]
 func (h *ShareLinkHandler) GetSharedResourcesAPI(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	password := r.URL.Query().Get("password")
@@ -244,6 +244,22 @@ func (h *ShareLinkHandler) GetSharedResourcesAPI(w http.ResponseWriter, r *http.
 		return
 	}
 
+	type resourceInfo struct {
+		ID           string `json:"id"`
+		Title        string `json:"title"`
+		Filename     string `json:"filename"`
+		FileSize     int64  `json:"file_size"`
+		ContentType  string `json:"content_type"`
+		ResourceType string `json:"resource_type"`
+		Views        int    `json:"views"`
+		CreatedAt    string `json:"created_at"`
+	}
+	type playlistInfo struct {
+		Name         string `json:"name"`
+		DisplayName  string `json:"display_name"`
+		PlaylistType string `json:"playlist_type"`
+	}
+
 	const limit = 100
 	const offset = 0
 
@@ -254,21 +270,71 @@ func (h *ShareLinkHandler) GetSharedResourcesAPI(w http.ResponseWriter, r *http.
 			respondJSONError(w, "Target category not found", http.StatusNotFound)
 			return
 		}
+
+		// Load playlists in this category
+		playlists, err := h.playlistStore.ListByCategory(link.TargetID)
+		if err != nil {
+			slog.Error("failed to list playlists for share link", "error", err)
+			// Non-fatal — proceed without playlists
+			playlists = nil
+		}
+		plInfo := make([]playlistInfo, 0, len(playlists))
+		for _, pl := range playlists {
+			plInfo = append(plInfo, playlistInfo{
+				Name:         pl.Name,
+				DisplayName:  pl.DisplayName,
+				PlaylistType: pl.PlaylistType,
+			})
+		}
+
+		// Check if a specific playlist is requested
+		playlistName := r.URL.Query().Get("playlist_name")
+		if playlistName != "" {
+			// Only return videos in that playlist
+			playlist, err := h.playlistStore.GetByNameOnly(playlistName)
+			if err != nil {
+				respondJSONError(w, "Playlist not found", http.StatusNotFound)
+				return
+			}
+			videoIDs, err := h.playlistStore.ListVideos(playlist.CategoryName, playlist.Name)
+			if err != nil {
+				slog.Error("failed to list playlist videos", "error", err)
+				respondJSONError(w, "Failed to list videos", http.StatusInternalServerError)
+				return
+			}
+			items := make([]resourceInfo, 0, len(videoIDs))
+			for _, vid := range videoIDs {
+				res, err := h.resourceStore.GetByID(vid)
+				if err != nil || res.Banned {
+					continue
+				}
+				items = append(items, resourceInfo{
+					ID:           res.ID,
+					Title:        res.Title,
+					Filename:     res.Filename,
+					FileSize:     res.FileSize,
+					ContentType:  res.ContentType,
+					ResourceType: res.ResourceType,
+					Views:        res.Views,
+					CreatedAt:    res.CreatedAt.Format(time.RFC3339),
+				})
+			}
+			respondJSONOK(w, map[string]interface{}{
+				"ok":          true,
+				"target_type": "category",
+				"target_name": category.DisplayName,
+				"resources":   items,
+				"playlists":   plInfo,
+			})
+			return
+		}
+
+		// No playlist filter — return all resources in the category
 		resources, err := h.resourceStore.ListByCategoryPaginated(link.TargetID, limit, offset)
 		if err != nil {
 			slog.Error("failed to list resources for share link", "error", err)
 			respondJSONError(w, "Failed to list resources", http.StatusInternalServerError)
 			return
-		}
-		type resourceInfo struct {
-			ID           string `json:"id"`
-			Title        string `json:"title"`
-			Filename     string `json:"filename"`
-			FileSize     int64  `json:"file_size"`
-			ContentType  string `json:"content_type"`
-			ResourceType string `json:"resource_type"`
-			Views        int    `json:"views"`
-			CreatedAt    string `json:"created_at"`
 		}
 		items := make([]resourceInfo, 0, len(resources))
 		for _, res := range resources {
@@ -291,6 +357,7 @@ func (h *ShareLinkHandler) GetSharedResourcesAPI(w http.ResponseWriter, r *http.
 			"target_type": "category",
 			"target_name": category.DisplayName,
 			"resources":   items,
+			"playlists":   plInfo,
 		})
 		return
 	}
@@ -307,16 +374,6 @@ func (h *ShareLinkHandler) GetSharedResourcesAPI(w http.ResponseWriter, r *http.
 			slog.Error("failed to list playlist videos", "error", err)
 			respondJSONError(w, "Failed to list videos", http.StatusInternalServerError)
 			return
-		}
-		type resourceInfo struct {
-			ID           string `json:"id"`
-			Title        string `json:"title"`
-			Filename     string `json:"filename"`
-			FileSize     int64  `json:"file_size"`
-			ContentType  string `json:"content_type"`
-			ResourceType string `json:"resource_type"`
-			Views        int    `json:"views"`
-			CreatedAt    string `json:"created_at"`
 		}
 		items := make([]resourceInfo, 0, len(videoIDs))
 		for _, vid := range videoIDs {

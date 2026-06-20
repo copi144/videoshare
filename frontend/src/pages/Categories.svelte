@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listCategories, createCategory, deleteCategory, listUsers, getUploaders, assignUploaders, createTargetShareLink } from '../lib/api';
+  import { listCategories, createCategory, deleteCategory, listUsers, getUploaders, assignUploaders, createTargetShareLink, listTargetShareLinks, deleteTargetShareLink } from '../lib/api';
   import MarkdownEditor from '../components/MarkdownEditor.svelte';
 
   export let onError: ((msg: string) => void) | undefined = undefined;
@@ -177,6 +177,7 @@
     shareLinkExpiry = 1440;
     shareLinkExpiryMode = 'preset';
     showShareLink = true;
+    loadExistingShareLinks();
   }
 
   function closeShareLink() {
@@ -194,10 +195,46 @@
       if (result.url) {
         shareLinkUrl = result.url;
       }
+      // Reload existing links after creating a new one
+      await loadExistingShareLinks();
     } catch (e: unknown) {
       shareLinkError = e instanceof Error ? e.message : 'Failed to create share link.';
     } finally {
       shareLinkLoading = false;
+    }
+  }
+
+  // Existing share links management
+  let existingShareLinks: Array<{id: string; expires_at: string | null; created_at: string}> = [];
+  let loadingShareLinks = false;
+  let linkToDelete: string | null = null;
+  let deletingLink = false;
+
+  async function loadExistingShareLinks() {
+    if (!shareLinkCategoryName) return;
+    loadingShareLinks = true;
+    try {
+      const result = await listTargetShareLinks('category', shareLinkCategoryName);
+      existingShareLinks = result.share_links || [];
+    } catch {
+      existingShareLinks = [];
+    } finally {
+      loadingShareLinks = false;
+    }
+  }
+
+  async function handleDeleteShareLink(linkId: string) {
+    if (!confirm('Delete this share link? It will stop working immediately.')) return;
+    deletingLink = true;
+    linkToDelete = linkId;
+    try {
+      await deleteTargetShareLink(linkId);
+      existingShareLinks = existingShareLinks.filter(l => l.id !== linkId);
+    } catch (e: unknown) {
+      shareLinkError = e instanceof Error ? e.message : 'Failed to delete share link.';
+    } finally {
+      deletingLink = false;
+      linkToDelete = null;
     }
   }
 </script>
@@ -362,6 +399,32 @@
           </div>
         </div>
       {:else}
+        <!-- Existing share links -->
+        {#if existingShareLinks.length > 0}
+          <div class="mb-3 border border-gray-200 rounded-md p-3">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">Existing Share Links</h4>
+            <div class="space-y-2 max-h-40 overflow-y-auto">
+              {#each existingShareLinks as link}
+                <div class="flex items-center justify-between text-sm bg-gray-50 rounded px-2 py-1.5">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs text-gray-500 truncate font-mono">{link.id}</p>
+                    {#if link.expires_at}
+                      <p class="text-xs text-gray-400">Expires: {new Date(link.expires_at).toLocaleString()}</p>
+                    {:else}
+                      <p class="text-xs text-gray-400">No expiry</p>
+                    {/if}
+                  </div>
+                  <button type="button" disabled={deletingLink && linkToDelete === link.id}
+                    class="text-red-600 hover:text-red-800 text-xs ml-2 disabled:opacity-50"
+                    on:click={() => handleDeleteShareLink(link.id)}>
+                    {deletingLink && linkToDelete === link.id ? '…' : 'Delete'}
+                  </button>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
         <div class="space-y-3">
           <div class="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-sm text-blue-700">
             Anyone with this link can access all videos in this category.

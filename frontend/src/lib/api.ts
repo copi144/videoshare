@@ -208,17 +208,32 @@ export const deleteTargetShareLink = (id: string) =>
 export const authenticateShareLink = (id: string, password: string) =>
   request<{ok: boolean; redirect: string; target_type: string; target_id: string}>('POST', `/api/share-links/${id}/auth`, { password });
 
-export const getShareLinkResources = (id: string, password: string) =>
-  request<{ok: boolean; target_type: string; target_name: string; resources: Array<{
-    id: string;
-    title: string;
-    filename: string;
-    file_size: number;
-    content_type: string;
-    resource_type: string;
-    views: number;
-    created_at: string;
-  }>}>('GET', `/api/share-links/${id}/resources?password=${encodeURIComponent(password)}`);
+export const getShareLinkResources = (id: string, password: string, playlistName?: string) => {
+  let path = `/api/share-links/${id}/resources?password=${encodeURIComponent(password)}`;
+  if (playlistName) {
+    path += `&playlist_name=${encodeURIComponent(playlistName)}`;
+  }
+  return request<{
+    ok: boolean;
+    target_type: string;
+    target_name: string;
+    resources: Array<{
+      id: string;
+      title: string;
+      filename: string;
+      file_size: number;
+      content_type: string;
+      resource_type: string;
+      views: number;
+      created_at: string;
+    }>;
+    playlists?: Array<{
+      name: string;
+      display_name: string;
+      playlist_type: string;
+    }>;
+  }>('GET', path);
+};
 
 // Users
 export const createUser = (name: string, isAdmin: boolean, displayName: string) =>
