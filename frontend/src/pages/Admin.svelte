@@ -37,10 +37,7 @@
   let loading = true;
   let uploading = false;
   let copySuccess: string | null = null;
-
-  // Name validation pattern
-  const namePattern = /^[0-9A-Za-z\-]*$/;
-  $: titleValid = uploadForm.title === '' || namePattern.test(uploadForm.title);
+  let dragOver = false;
 
   // Pagination (local state only)
   let limit = 50;
@@ -48,7 +45,22 @@
   let total = 0;
 
   function onFileChange(e: Event) {
-    selectedFile = (e.target as HTMLInputElement).files?.[0] ?? null;
+    const file = (e.target as HTMLInputElement).files?.[0] ?? null;
+    selectedFile = file;
+    if (file && !uploadForm.title.trim()) {
+      const name = file.name.replace(/\.[^.]+$/, '');
+      uploadForm.title = name;
+    }
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0] ?? null;
+    selectedFile = file;
+    if (file && !uploadForm.title.trim()) {
+      const name = file.name.replace(/\.[^.]+$/, '');
+      uploadForm.title = name;
+    }
   }
 
   $: selectedCategory = categories.find(c => c.name === uploadForm.category_id);
@@ -182,10 +194,18 @@
 <!-- Upload Form -->
 <div class="rounded-lg border border-gray-200 bg-white p-4 mb-4">
   <h2 class="text-base font-semibold text-gray-900 mb-3">Upload Video</h2>
-  <form on:submit|preventDefault={handleUpload} class="space-y-3">
+  <div
+    class="space-y-3"
+    class:border-indigo-300={dragOver}
+    role="application"
+    on:dragover|preventDefault={() => dragOver = true}
+    on:dragleave={() => dragOver = false}
+    on:drop|preventDefault={handleDrop}
+  >
+  <form on:submit|preventDefault={handleUpload}>
     <div>
       <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title</label>
-      <input type="text" id="title" name="title" bind:value={uploadForm.title} required class="w-full" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class:border-red-500={uploadForm.title !== '' && !titleValid} />
+      <input type="text" id="title" name="title" bind:value={uploadForm.title} required class="w-full" />
     </div>
     <div>
       <label for="readme" class="block text-sm font-medium text-gray-700 mb-1">Readme (Markdown)</label>
@@ -227,6 +247,7 @@
       </button>
     </div>
   </form>
+  </div>
 </div>
 
 <!-- Resources Table -->

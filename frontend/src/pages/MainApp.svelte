@@ -129,10 +129,7 @@
   let uploadError: string | null = null;
   let uploading = false;
   let copySuccess: string | null = null;
-
-  // Name validation pattern
-  const namePattern = /^[0-9A-Za-z\-]*$/;
-  $: titleValid = uploadForm.title === '' || namePattern.test(uploadForm.title);
+  let dragOver = false;
   
   // --- Create Link modal ---
   
@@ -287,7 +284,22 @@
   }
 
   function onFileChange(e: Event) {
-    selectedFile = (e.target as HTMLInputElement).files?.[0] ?? null;
+    const file = (e.target as HTMLInputElement).files?.[0] ?? null;
+    selectedFile = file;
+    if (file && !uploadForm.title.trim()) {
+      const name = file.name.replace(/\.[^.]+$/, '');
+      uploadForm.title = name;
+    }
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0] ?? null;
+    selectedFile = file;
+    if (file && !uploadForm.title.trim()) {
+      const name = file.name.replace(/\.[^.]+$/, '');
+      uploadForm.title = name;
+    }
   }
 
   async function handleUpload() {
@@ -935,10 +947,18 @@
         <!-- Upload form -->
         {#if $isAuthenticated}
         <div class="rounded-lg border border-gray-200 bg-white p-4">
-          <form on:submit|preventDefault={handleUpload} class="upload-form">
+          <div
+            class="upload-form"
+            class:dragging={dragOver}
+            role="application"
+            on:dragover|preventDefault={() => dragOver = true}
+            on:dragleave={() => dragOver = false}
+            on:drop|preventDefault={handleDrop}
+          >
+          <form on:submit|preventDefault={handleUpload}>
             <div class="upload-row-title">
               <span class="upload-label">upload</span>
-              <input type="text" id="title" name="title" bind:value={uploadForm.title} placeholder="title" required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class:border-red-500={uploadForm.title !== '' && !titleValid} />
+              <input type="text" id="title" name="title" bind:value={uploadForm.title} placeholder="title" required />
             </div>
             <div>
               <label for="readme" class="block text-sm font-medium text-gray-700 mb-1">Readme (Markdown)</label>
@@ -980,6 +1000,7 @@
               {uploading ? 'Uploading…' : 'upload'}
             </button>
           </form>
+          </div>
         </div>
         {/if}
 
@@ -1467,6 +1488,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .upload-form.dragging {
+    outline: 2px dashed #6366f1;
+    outline-offset: 4px;
+    border-radius: 0.375rem;
   }
 
   .upload-row-title {
