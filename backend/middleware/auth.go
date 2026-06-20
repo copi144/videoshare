@@ -174,13 +174,15 @@ func RequireAdmin(sm *scs.SessionManager) func(http.Handler) http.Handler {
 	}
 }
 
-// RequireShareScope returns middleware that restricts resource access to what is within
-// the share link scope (for session-authenticated, non-user requests).
-// Logged-in users bypass scope checks entirely.
+// RequireShareScope returns middleware that restricts resource access to what is
+// within the share link scope for guest (non-logged-in) visitors.
+// Logged-in users pass through — their own permissions (admin = all,
+// regular = assigned categories) already determine access. The share scope
+// is an additional access path, not a restriction — permissions are the union.
 func RequireShareScope(sm *scs.SessionManager, store *model.ShareLinkStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Logged-in users bypass scope
+			// Logged-in users: their own permissions system applies
 			if GetUserID(r.Context(), sm) != "" {
 				next.ServeHTTP(w, r)
 				return
@@ -203,13 +205,6 @@ func RequireShareScope(sm *scs.SessionManager, store *model.ShareLinkStore) func
 				return
 			}
 
-			// Check cache first (authorized_resources map in session)
-			authMap, ok := sm.Get(r.Context(), "authorized_resources").(map[string]bool)
-			if ok && authMap[resourceID] {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			// Check scope via database
 			if !store.IsResourceInScope(resourceID, targetType, targetID) {
 				slog.Warn("RequireShareScope: resource not in scope",
@@ -217,13 +212,6 @@ func RequireShareScope(sm *scs.SessionManager, store *model.ShareLinkStore) func
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
-
-			// Cache the result
-			if authMap == nil {
-				authMap = make(map[string]bool)
-			}
-			authMap[resourceID] = true
-			sm.Put(r.Context(), "authorized_resources", authMap)
 
 			next.ServeHTTP(w, r)
 		})

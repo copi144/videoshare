@@ -210,8 +210,6 @@ func (h *ShareLinkHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Reques
 	middleware.SetVideoAuth(r.Context(), h.sm)
 	h.sm.Put(r.Context(), "share_target_type", link.TargetType)
 	h.sm.Put(r.Context(), "share_target_id", link.TargetID)
-	h.sm.Put(r.Context(), "authorized_resources", map[string]bool{})
-
 	var redirect string
 	if link.TargetType == "category" {
 		redirect = "/#/c/" + link.TargetID
