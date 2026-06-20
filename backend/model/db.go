@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pquerna/otp/totp"
 
@@ -243,6 +244,21 @@ func migrate(db *sql.DB) error {
 		if _, err := db.Exec(idx); err != nil {
 			return fmt.Errorf("create index: %w", err)
 		}
+	}
+
+	// ── Resource categories backfill (for existing DBs from pre-v1.0) ──
+	// The old schema had category_name directly in the resources table.
+	// If that column still exists (CREATE TABLE IF NOT EXISTS preserved it),
+	// copy existing data to resource_categories join table.
+	if _, err := db.Exec(`INSERT OR IGNORE INTO resource_categories (resource_id, category_name) SELECT id, category_name FROM resources WHERE category_name IS NOT NULL AND category_name != ''`); err != nil {
+		// This fails silently on fresh DBs where category_name column doesn't exist.
+		// That's expected — new DBs use the resource_categories table directly.
+		// Only WORRY on ACTUAL SQL errors (not "no such column").
+		errStr := err.Error()
+		if !strings.Contains(errStr, "no such column: category_name") {
+			return fmt.Errorf("backfill resource_categories: %w", err)
+		}
+		slog.Debug("resource_categories backfill skipped (no category_name column in resources)")
 	}
 
 	return nil
