@@ -104,7 +104,7 @@
 
   // --- Category / Playlist filtering ---
 
-  let selectedCategoryId: string = 'global';
+  let selectedCategoryId: string = '';
   let selectedPlaylistComposite: string = ''; // format: "category:name" or "" for all
 
   function parsePlaylistComposite(composite: string): { category: string; name: string } {
@@ -711,6 +711,7 @@
               </span>
             {:else}
               <select bind:value={selectedCategoryId} on:change={onCategoryChange}>
+                <option value="">All categories</option>
                 {#each categories as cat}
                   <option value={cat.name}>
                     {cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}

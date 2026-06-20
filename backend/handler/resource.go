@@ -277,6 +277,13 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	// Add resource to the selected category.
 	if err := h.store.AddResourceCategory(hashHex, categoryName); err != nil {
 		slog.Error("failed to add resource category", "id", hashHex, "category", categoryName, "error", err)
+		// Clean up the resource record since it has no category association
+		if cleanupErr := h.store.Delete(hashHex); cleanupErr != nil {
+			slog.Error("failed to clean up resource after category error", "id", hashHex, "error", cleanupErr)
+		}
+		os.RemoveAll(hashDir)
+		respondError(w, r, http.StatusInternalServerError, "Failed to associate resource with category")
+		return
 	}
 
 	slog.Info("resource uploaded",

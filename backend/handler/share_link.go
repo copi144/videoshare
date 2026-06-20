@@ -85,7 +85,7 @@ func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t := time.Now().UTC().Add(time.Duration(req.ExpiresInMinutes) * time.Minute)
-	userID := middleware.GetUserIDFromContext(r.Context())
+	userID := middleware.GetUserID(r.Context(), h.sm)
 	now := time.Now().UTC()
 
 	link := &model.ShareLink{
