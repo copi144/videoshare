@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listCategories, createCategory, deleteCategory, listUsers, getUploaders, assignUploaders } from '../lib/api';
+  import { listCategories, createCategory, deleteCategory, listUsers, getUploaders, assignUploaders, createTargetShareLink } from '../lib/api';
   import MarkdownEditor from '../components/MarkdownEditor.svelte';
 
   export let onError: ((msg: string) => void) | undefined = undefined;
@@ -41,6 +41,19 @@
   let memberLoading = false;
   let memberSaving = false;
   let memberError: string | null = null;
+
+  // Share link creation
+  let showShareLink = false;
+  let shareLinkCategoryName = '';
+  let shareLinkUrl = '';
+  let shareLinkLoading = false;
+  let shareLinkError: string | null = null;
+  let shareLinkExpiry = 1440;
+  let shareLinkExpiryMode: 'preset' | 'custom' = 'preset';
+  let shareLinkCustomMinutes = 1440;
+  $: if (shareLinkExpiryMode === 'custom') {
+    shareLinkExpiry = shareLinkCustomMinutes;
+  }
 
   onMount(async () => {
     await loadCategories();
@@ -156,6 +169,37 @@
       memberSaving = false;
     }
   }
+
+  function openShareLink(name: string) {
+    shareLinkCategoryName = name;
+    shareLinkUrl = '';
+    shareLinkError = null;
+    shareLinkExpiry = 1440;
+    shareLinkExpiryMode = 'preset';
+    showShareLink = true;
+  }
+
+  function closeShareLink() {
+    showShareLink = false;
+    shareLinkCategoryName = '';
+    shareLinkUrl = '';
+    shareLinkError = null;
+  }
+
+  async function handleCreateShareLink() {
+    shareLinkLoading = true;
+    shareLinkError = null;
+    try {
+      const result = await createTargetShareLink('category', shareLinkCategoryName, shareLinkExpiry);
+      if (result.url) {
+        shareLinkUrl = result.url;
+      }
+    } catch (e: unknown) {
+      shareLinkError = e instanceof Error ? e.message : 'Failed to create share link.';
+    } finally {
+      shareLinkLoading = false;
+    }
+  }
 </script>
 
 <div class="space-y-4">
@@ -186,6 +230,7 @@
               <td class="py-2 pr-4 text-gray-500">{new Date(cat.created_at).toLocaleDateString()}</td>
               <td class="py-2">
                 <div class="flex gap-1">
+                  <button class="row-action-btn" type="button" on:click={() => openShareLink(cat.name)}>Share</button>
                   <button class="row-action-btn" type="button" on:click={() => openMembers(cat.name)}>Members</button>
                   <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(cat.name)}>Delete</button>
                 </div>
@@ -286,6 +331,95 @@
           >
             {memberSaving ? 'Saving…' : 'Save'}
           </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if showShareLink}
+  <div class="fixed inset-0 bg-black/30 z-40" on:click={closeShareLink}></div>
+  <div class="fixed inset-0 flex items-center justify-center z-50">
+    <div class="rounded-lg border border-gray-200 bg-white p-6 max-w-md w-full shadow-xl mx-4">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-base font-semibold text-gray-900">Share Link: {shareLinkCategoryName}</h3>
+        <button class="text-gray-400 hover:text-gray-600 text-xl leading-none" on:click={closeShareLink}>&times;</button>
+      </div>
+
+      {#if shareLinkUrl}
+        <div class="space-y-3">
+          <div class="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+            Link created!
+          </div>
+          <div class="text-sm text-gray-500 break-all">{window.location.origin}{shareLinkUrl}</div>
+          <input type="text" readonly value={window.location.origin + shareLinkUrl} class="w-full text-sm" on:focus={(e) => e.currentTarget.select()} />
+          <div class="flex justify-end border-t border-gray-100 pt-3">
+            <button
+              class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+              type="button"
+              on:click={closeShareLink}
+            >Close</button>
+          </div>
+        </div>
+      {:else}
+        <div class="space-y-3">
+          <div class="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-sm text-blue-700">
+            Anyone with this link can access all videos in this category.
+          </div>
+
+          <label class="block text-sm font-medium text-gray-700">Expires after</label>
+          <div class="flex gap-4 mb-2">
+            <label class="inline-flex items-center gap-1.5 text-sm">
+              <input type="radio" name="slExpiryMode" value="preset" bind:group={shareLinkExpiryMode} />
+              Preset
+            </label>
+            <label class="inline-flex items-center gap-1.5 text-sm">
+              <input type="radio" name="slExpiryMode" value="custom" bind:group={shareLinkExpiryMode} />
+              Custom
+            </label>
+          </div>
+
+          {#if shareLinkExpiryMode === 'preset'}
+            <select bind:value={shareLinkExpiry} class="w-full">
+              <option value={1}>1 minute</option>
+              <option value={5}>5 minutes</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option>
+              <option value={360}>6 hours</option>
+              <option value={720}>12 hours</option>
+              <option value={1440}>1 day</option>
+              <option value={4320}>3 days</option>
+              <option value={10080}>7 days</option>
+              <option value={43200}>30 days</option>
+              <option value={129600}>90 days</option>
+              <option value={525600}>365 days</option>
+            </select>
+          {:else}
+            <div>
+              <input type="number" bind:value={shareLinkCustomMinutes} min={1} max={525600} class="w-full" />
+              <p class="text-xs text-gray-500 mt-1">Minutes (1–525600)</p>
+            </div>
+          {/if}
+
+          {#if shareLinkError}
+            <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{shareLinkError}</div>
+          {/if}
+
+          <div class="flex justify-end gap-2 border-t border-gray-100 pt-3">
+            <button
+              class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+              type="button"
+              on:click={closeShareLink}
+            >Cancel</button>
+            <button
+              class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+              type="button"
+              disabled={shareLinkLoading}
+              on:click={handleCreateShareLink}
+            >
+              {shareLinkLoading ? 'Creating…' : 'Create Link'}
+            </button>
+          </div>
         </div>
       {/if}
     </div>

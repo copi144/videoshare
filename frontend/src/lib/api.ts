@@ -195,8 +195,8 @@ export const deleteShareLink = (resourceId: string, password: string) =>
   request<{ok: boolean}>('DELETE', `/api/share-resources/${encodeURIComponent(resourceId)}/${encodeURIComponent(password)}`);
 
 // Category/Playlist Share Links — API: /api/share-links
-export const createTargetShareLink = (targetType: string, targetId: string, expiresInMinutes: number) =>
-  request<{ok: boolean; url: string; id: string; password: string; target_type: string; target_id: string; expires_at: string}>('POST', '/api/share-links', { target_type: targetType, target_id: targetId, expires_in_minutes: expiresInMinutes });
+export const createTargetShareLink = (targetType: string, targetId: string, expiresInMinutes: number, targetCategory?: string) =>
+  request<{ok: boolean; url: string; id: string; password: string; target_type: string; target_id: string; expires_at: string}>('POST', '/api/share-links', { target_type: targetType, target_id: targetId, target_category: targetCategory, expires_in_minutes: expiresInMinutes });
 
 export const listTargetShareLinks = (targetType: string, targetId: string) =>
   request<{share_links: Array<{id: string; target_type: string; target_id: string; expires_at: string | null; created_by: string; created_at: string}>}>('GET', `/api/share-links?target_type=${targetType}&target_id=${targetId}`);
