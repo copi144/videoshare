@@ -19,7 +19,7 @@
     uploaded_by: string;
     uploaded_username: string;
     filename?: string;
-    category_name: string;
+    categories?: string[];
     transcode_status?: string;
     banned?: boolean;
   }

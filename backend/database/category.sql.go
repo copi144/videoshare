@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 )
 
 const addUploader = `-- name: AddUploader :exec
@@ -120,10 +119,10 @@ func (q *Queries) GetCategory(ctx context.Context, name string) (Category, error
 }
 
 const getCategoryVideoCount = `-- name: GetCategoryVideoCount :one
-SELECT COUNT(*) FROM resources WHERE category_name = ?
+SELECT COUNT(*) FROM resource_categories WHERE category_name = ?
 `
 
-func (q *Queries) GetCategoryVideoCount(ctx context.Context, categoryName sql.NullString) (int64, error) {
+func (q *Queries) GetCategoryVideoCount(ctx context.Context, categoryName string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, getCategoryVideoCount, categoryName)
 	var count int64
 	err := row.Scan(&count)

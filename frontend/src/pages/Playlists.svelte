@@ -12,10 +12,10 @@
   }
 
   interface Playlist {
-    id: string;
     name: string;
     description: string;
     category_name: string;
+    playlist_type: string;
     created_at: string;
   }
 
@@ -30,6 +30,10 @@
   let success: string | null = null;
   let loading = true;
 
+  // Filters
+  let selectedCategory = '';
+  let selectedType = '';
+
   // Name validation pattern
   const namePattern = /^[0-9A-Za-z\-]*$/;
   $: formNameValid = formName === '' || namePattern.test(formName);
@@ -40,29 +44,34 @@
   let total = 0;
 
   onMount(async () => {
-    await loadData();
+    categories = (await listCategories()).categories;
+    categoryMap = {};
+    for (const cat of categories) {
+      categoryMap[cat.name] = cat.display_name || cat.name;
+    }
+    await loadPlaylists();
   });
 
-  async function loadData() {
+  async function loadPlaylists() {
     loading = true;
     try {
-      const [catData, plData] = await Promise.all([
-        listCategories(),
-        listPlaylists({ limit, offset }),
-      ]);
-      categories = catData.categories;
-      categoryMap = {};
-      for (const cat of catData.categories) {
-        categoryMap[cat.name] = cat.display_name || cat.name;
-      }
+      const params: Record<string, string | number> = { limit, offset };
+      if (selectedCategory) params.category_name = selectedCategory;
+      if (selectedType) params.playlist_type = selectedType;
+      const plData = await listPlaylists(params);
       playlists = plData.playlists;
       total = plData.total;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load data.';
+      const msg = e instanceof Error ? e.message : 'Failed to load playlists.';
       onError?.(msg);
     } finally {
       loading = false;
     }
+  }
+
+  function onFilterChange() {
+    offset = 0;
+    loadPlaylists();
   }
 
   async function handleCreate() {
@@ -86,7 +95,7 @@
         formDescription = '';
         formCategoryId = '';
         formPlaylistType = 'video';
-        await loadData();
+        await loadPlaylists();
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to create playlist.';
@@ -94,13 +103,13 @@
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(categoryName: string, name: string) {
     if (!confirm('Are you sure you want to delete this playlist? This action cannot be undone.')) {
       return;
     }
     try {
-      await deletePlaylist(id);
-      await loadData();
+      await deletePlaylist(name, categoryName);
+      await loadPlaylists();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to delete playlist.';
       onError?.(msg);
@@ -116,10 +125,33 @@
   <!-- Table -->
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-base font-semibold text-gray-900 mb-3">Playlists</h2>
+
+    <!-- Filter bar -->
+    <div class="flex gap-3 mb-3">
+      <select bind:value={selectedCategory} on:change={onFilterChange} class="min-w-[180px]">
+        <option value="">All categories</option>
+        {#each categories as cat}
+          <option value={cat.name}>{cat.display_name || cat.name}{cat.name === 'global' ? ' (public)' : ''}</option>
+        {/each}
+      </select>
+      <select bind:value={selectedType} on:change={onFilterChange} class="min-w-[180px]">
+        <option value="">All types</option>
+        <option value="video">Video</option>
+        <option value="audio">Audio</option>
+        <option value="image">Image</option>
+      </select>
+    </div>
+
     {#if loading}
       <p class="text-gray-500 text-sm">Loading playlists…</p>
     {:else if playlists.length === 0}
-      <p class="text-gray-500 text-sm">No playlists yet.</p>
+      <p class="text-gray-500 text-sm">
+        {#if selectedCategory || selectedType}
+          No playlists match the selected filters.
+        {:else}
+          No playlists yet.
+        {/if}
+      </p>
     {:else}
       <table class="w-full text-left text-sm">
         <thead>
@@ -134,12 +166,12 @@
         <tbody>
           {#each playlists as pl}
             <tr class="border-b border-gray-100">
-              <td class="py-2 pr-4">{pl.name}</td>
+              <td class="py-2 pr-4"><a href="/#/l/{pl.category_name}/{pl.name}" class="text-indigo-600 hover:text-indigo-800 underline">{pl.name}</a></td>
               <td class="py-2 pr-4 text-gray-500">{categoryMap[pl.category_name] || 'Unknown'}</td>
               <td class="py-2 pr-4 text-gray-500">{pl.description || '—'}</td>
               <td class="py-2 pr-4 text-gray-500">{new Date(pl.created_at).toLocaleDateString()}</td>
               <td class="py-2">
-                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(pl.id)}>Delete</button>
+                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(pl.category_name, pl.name)}>Delete</button>
               </td>
             </tr>
           {/each}
@@ -147,8 +179,8 @@
       </table>
       <div class="mt-3 flex items-center gap-2 text-sm">
         <span class="text-gray-500">{offset + 1}–{offset + playlists.length} of {total}</span>
-        <button type="button" class="row-action-btn" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
-        <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadData(); }} disabled={offset + playlists.length >= total}>Next</button>
+        <button type="button" class="row-action-btn" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadPlaylists(); } }} disabled={offset === 0}>Prev</button>
+        <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadPlaylists(); }} disabled={offset + playlists.length >= total}>Next</button>
       </div>
     {/if}
   </div>

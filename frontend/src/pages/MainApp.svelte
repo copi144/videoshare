@@ -4,6 +4,7 @@
   import { logout, setApiToken } from '../lib/api';
   import {
     listResources,
+    getResource,
     uploadVideo,
     deleteResource,
     retranscode,
@@ -35,7 +36,7 @@
     uploaded_by: string;
     uploaded_username: string;
     filename?: string;
-    category_name: string;
+    categories?: string[];
     transcode_status?: string;
     banned?: boolean;
   }
@@ -47,7 +48,6 @@
   }
 
   interface Playlist {
-    id: string;
     name: string;
     description?: string;
     category_name: string;
@@ -83,6 +83,11 @@
     await loadAll();
   }
 
+  // --- Initial navigation from hash routes ---
+
+  export let initialCategory: string | null = null;
+  export let initialPlaylist: string | null = null;
+
   // --- Tab state ---
 
   let activeTab: 'browse' | 'history' | 'users' | 'categories' | 'playlists' = 'browse';
@@ -90,7 +95,14 @@
   // --- Category / Playlist filtering ---
 
   let selectedCategoryId: string = 'global';
-  let selectedPlaylistId: string | null = '';
+  let selectedPlaylistComposite: string = ''; // format: "category:name" or "" for all
+
+  function parsePlaylistComposite(composite: string): { category: string; name: string } {
+    if (!composite) return { category: '', name: '' };
+    const sep = composite.indexOf(':');
+    if (sep === -1) return { category: '', name: composite };
+    return { category: composite.substring(0, sep), name: composite.substring(sep + 1) };
+  }
   let selectedResourceType: 'all' | 'video' | 'audio' | 'image' = 'all';
   let viewMode: 'list' | 'card' = 'list';
   let categories: Category[] = [];
@@ -175,14 +187,33 @@
 
   $: selectedCategory = categories.find((c) => c.name === uploadForm.category_id);
 
+  $: if (initialCategory) {
+    selectedCategoryId = initialCategory;
+    selectedPlaylistComposite = '';
+    selectedResourceType = 'all';
+    activeTab = 'browse';
+    offset = 0;
+    loadResources();
+    initialCategory = null; // prevent re-trigger
+  } else if (initialPlaylist) {
+    selectedPlaylistComposite = initialPlaylist; // initialPlaylist is already "category:name"
+    selectedResourceType = 'all';
+    activeTab = 'browse';
+    offset = 0;
+    loadResources();
+    initialPlaylist = null; // prevent re-trigger
+  }
+
   // --- Data loading ---
 
   async function loadResources() {
     error = null;
     try {
-      const params: { limit: number; offset: number; category_name?: string; playlist_id?: string; resource_type?: string } = { limit, offset };
-      if (selectedPlaylistId && selectedPlaylistId !== '') {
-        params.playlist_id = selectedPlaylistId;
+      const params: { limit: number; offset: number; category_name?: string; resource_type?: string } = { limit, offset };
+      if (selectedPlaylistComposite) {
+        // Backend doesn't filter by playlist yet — pass category_name for context
+        const plInfo = parsePlaylistComposite(selectedPlaylistComposite);
+        params.category_name = plInfo.category;
       } else if (selectedCategoryId) {
         params.category_name = selectedCategoryId;
       }
@@ -242,14 +273,14 @@
   // --- Event handlers ---
 
   function onCategoryChange() {
-    selectedPlaylistId = '';
+    selectedPlaylistComposite = '';
     offset = 0;
     loadResources();
     loadPlaylists();
   }
 
   function onTypeChange() {
-    selectedPlaylistId = '';
+    selectedPlaylistComposite = '';
     offset = 0;
     loadResources();
     loadPlaylists();
@@ -294,15 +325,44 @@
   }
 
   async function handleDelete(id: string) {
-    openConfirm(
-      'Delete Video',
-      'Are you sure you want to delete this video? This action cannot be undone.',
-      'Delete',
-      async () => {
-        await deleteResource(id);
-        await loadResources();
+    try {
+      const detail = await getResource(id);
+      const cats = (detail as any).categories;
+
+      if (Array.isArray(cats) && cats.length > 1 && selectedCategoryId) {
+        const otherCats = cats.filter((c: string) => c !== selectedCategoryId);
+        openConfirm(
+          'Unlink or Delete?',
+          `This resource is in ${cats.length} categories: ${cats.join(', ')}. ` +
+          `Remove from "${selectedCategoryId}" only? (File will NOT be deleted.)`,
+          'Unlink',
+          async () => {
+            await deleteResource(id, selectedCategoryId);
+            await loadResources();
+          }
+        );
+      } else {
+        openConfirm(
+          'Delete Resource',
+          'The file will be permanently removed from disk.',
+          'Delete',
+          async () => {
+            await deleteResource(id);
+            await loadResources();
+          }
+        );
       }
-    );
+    } catch {
+      openConfirm(
+        'Delete Resource',
+        'Are you sure? This will permanently delete the file.',
+        'Delete',
+        async () => {
+          await deleteResource(id);
+          await loadResources();
+        }
+      );
+    }
   }
 
   async function handleRetranscode(id: string) {
@@ -331,8 +391,8 @@
 
   async function handleBatchDelete() {
     openConfirm(
-      'Delete Selected Videos',
-      `Delete ${selectedIds.size} selected videos? This action cannot be undone.`,
+      'Delete Selected',
+      `Delete ${selectedIds.size} selected resources? Files will be permanently removed from disk.`,
       'Delete All',
       async () => {
         await Promise.all(Array.from(selectedIds).map((id) => deleteResource(id)));
@@ -618,10 +678,10 @@
                 </option>
               {/each}
             </select>
-            <select bind:value={selectedPlaylistId} on:change={() => { offset = 0; loadResources(); }}>
+            <select bind:value={selectedPlaylistComposite} on:change={() => { offset = 0; loadResources(); }}>
               <option value="">All playlists</option>
               {#each playlists as pl}
-                <option value={pl.id}>{pl.name}</option>
+                <option value="{pl.category_name}:{pl.name}">{pl.name} ({pl.category_name})</option>
               {/each}
             </select>
             <select bind:value={selectedResourceType} on:change={onTypeChange}>
@@ -678,7 +738,7 @@
             <p class="text-gray-500 text-sm" aria-busy="true">Loading videos…</p>
           {:else if resources.length === 0}
             <p class="text-gray-500 text-sm">
-              {#if selectedPlaylistId}
+              {#if selectedPlaylistComposite}
                 No videos in this playlist.
               {:else}
                 Upload a video using the form in the Browse tab.
@@ -694,7 +754,7 @@
                       <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase"></th>
                     {/if}
                     <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Title</th>
-                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Category</th>
+                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Download</th>
                     <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Views</th>
                     <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Size</th>
@@ -714,7 +774,15 @@
                         </td>
                       {/if}
                       <td class="py-2 pr-4"><a href="/#/v/{res.id}" class="text-indigo-600 hover:text-indigo-800 underline">{res.title}</a></td>
-                      <td class="py-2 pr-4 text-gray-500">{res.category_name}</td>
+                      <td class="py-2 pr-4">
+                        {#if res.resource_type === 'video'}
+                          <a href="/v/{res.id}/download" target="_blank" class="row-action-btn">Download</a>
+                        {:else if res.resource_type === 'audio'}
+                          <a href="/a/{res.id}" target="_blank" class="row-action-btn">Download</a>
+                        {:else if res.resource_type === 'image'}
+                          <a href="/i/{res.id}" target="_blank" class="row-action-btn">Download</a>
+                        {/if}
+                      </td>
                       <td class="py-2 pr-4">
                         {#if res.banned}
                           <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Banned</span>
@@ -734,7 +802,7 @@
                       <td class="py-2 pr-4 text-gray-500">{formatSize(res.file_size)}</td>
                       <td class="py-2">
                         <div class="flex gap-1">
-                          {#if res.category_name === 'global'}
+                          {#if res.categories && res.categories.includes('global')}
                             <button class="row-action-btn" type="button" on:click={() => { copyShareLink(res.id); }}>
                               {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
                             </button>
@@ -783,7 +851,6 @@
                       <a href="/#/v/{res.id}" class="text-indigo-600 hover:text-indigo-800 underline font-medium">{res.title}</a>
                     </div>
                     <div class="card-meta">
-                      <span class="card-category">{res.category_name}</span>
                       {#if res.banned}
                         <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Banned</span>
                       {:else if res.transcode_status === 'done'}
@@ -803,7 +870,14 @@
                       <span>{formatSize(res.file_size)}</span>
                     </div>
                     <div class="card-actions">
-                      {#if res.category_name === 'global'}
+                      {#if res.resource_type === 'video'}
+                        <a href="/v/{res.id}/download" target="_blank" class="card-action-btn">Download</a>
+                      {:else if res.resource_type === 'audio'}
+                        <a href="/a/{res.id}" target="_blank" class="card-action-btn">Download</a>
+                      {:else if res.resource_type === 'image'}
+                        <a href="/i/{res.id}" target="_blank" class="card-action-btn">Download</a>
+                      {/if}
+                      {#if res.categories && res.categories.includes('global')}
                         <button class="card-action-btn" type="button" on:click={() => { copyShareLink(res.id); }}>
                           {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
                         </button>

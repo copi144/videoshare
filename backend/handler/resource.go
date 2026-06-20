@@ -132,7 +132,13 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save to temp file while computing BLAKE3 hash via TeeReader.
-	tmpFile, err := os.CreateTemp(h.dataDir, "upload-*")
+	tmpDir := filepath.Join(h.dataDir, "tmp")
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		slog.Error("failed to create temp directory", "error", err)
+		respondError(w, r, http.StatusInternalServerError, "Storage error")
+		return
+	}
+	tmpFile, err := os.CreateTemp(tmpDir, "upload-*")
 	if err != nil {
 		slog.Error("failed to create temp file", "error", err)
 		respondError(w, r, http.StatusInternalServerError, "Storage error")
@@ -194,14 +200,36 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for duplicate content by hash.
-	// Duplicate detection uses content BLAKE3 hash as the resource ID (PK). The row and files are removed on delete, freeing the hash for re-upload of identical content.
 	existing, err := h.store.GetByID(hashHex)
 	if err == nil && existing != nil {
 		if existing.Banned {
 			respondError(w, r, http.StatusConflict, "This file has been banned and cannot be re-uploaded")
 			return
 		}
-		respondError(w, r, http.StatusConflict, "File already exists: "+existing.ID)
+
+		// File exists: check if already linked to this category.
+		cats, catErr := h.store.GetResourceCategories(hashHex)
+		if catErr == nil {
+			for _, c := range cats {
+				if c == categoryName {
+					respondError(w, r, http.StatusConflict, "File already exists in this category: "+hashHex)
+					return
+				}
+			}
+		}
+
+		// Not in this category: create a reference link only.
+		if err := h.store.AddResourceCategory(hashHex, categoryName); err != nil {
+			slog.Error("failed to add resource category for existing file", "id", hashHex, "category", categoryName, "error", err)
+			respondError(w, r, http.StatusInternalServerError, "Failed to reference existing file")
+			return
+		}
+
+		slog.Info("resource linked to new category (dedup)", "id", hashHex, "category", categoryName)
+		respondJSONOK(w, map[string]interface{}{
+			"redirect": "/admin",
+			"linked":   true,
+		})
 		return
 	}
 
@@ -240,7 +268,6 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		ContentType:  contentType,
 		ResourceType: resourceType,
 		UploadedBy:   userID,
-		CategoryName: categoryName,
 		NoTranscode:  noTranscode,
 	}
 
@@ -249,6 +276,11 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		os.RemoveAll(hashDir)
 		respondError(w, r, http.StatusInternalServerError, "Failed to save record")
 		return
+	}
+
+	// Add resource to the selected category.
+	if err := h.store.AddResourceCategory(hashHex, categoryName); err != nil {
+		slog.Error("failed to add resource category", "id", hashHex, "category", categoryName, "error", err)
 	}
 
 	slog.Info("resource uploaded",
@@ -320,7 +352,22 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 	var total int
 	var err error
 	resourceType := r.URL.Query().Get("resource_type")
-	if resourceType != "" {
+	categoryName := r.URL.Query().Get("category_name")
+
+	switch {
+	case categoryName != "":
+		if isAdmin {
+			resources, err = h.store.ListByCategoryPaginated(categoryName, limit, offset)
+			if err == nil {
+				total, err = h.store.CountByCategory(categoryName)
+			}
+		} else {
+			resources, err = h.store.ListByCategoryAndUploaderPaginated(categoryName, userID, limit, offset)
+			if err == nil {
+				total, err = h.store.CountByCategoryAndUploader(categoryName, userID)
+			}
+		}
+	case resourceType != "":
 		if isAdmin {
 			resources, err = h.store.ListByTypePaginated(resourceType, limit, offset)
 			if err == nil {
@@ -332,12 +379,12 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 				total, err = h.store.CountByTypeAndUploader(resourceType, userID)
 			}
 		}
-	} else if isAdmin {
+	case isAdmin:
 		resources, err = h.store.ListPaginated(limit, offset)
 		if err == nil {
 			total, err = h.store.Count()
 		}
-	} else {
+	default:
 		resources, err = h.store.ListByUploaderPaginated(userID, limit, offset)
 		if err == nil {
 			total, err = h.store.CountByUploader(userID)
@@ -358,6 +405,13 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		resources = filtered
+	}
+
+	// Enrich resources with their categories from the join table.
+	if len(resources) > 0 {
+		if err := h.store.EnrichWithCategories(resources); err != nil {
+			slog.Error("failed to enrich resources with categories", "error", err)
+		}
 	}
 
 	respondJSONOK(w, map[string]interface{}{
@@ -393,6 +447,11 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		}()
 	}
 
+	// Populate categories from the join table.
+	if cats, err := h.store.GetResourceCategories(resource.ID); err == nil {
+		resource.Categories = cats
+	}
+
 	// Read readme file if it exists.
 	readmeContent := ""
 	readmePath := storage.ReadmePath(h.dataDir, resource.ResourceType, resource.ID)
@@ -414,12 +473,15 @@ func (h *ResourceHandler) GetResourceAPI(w http.ResponseWriter, r *http.Request)
 		"created_at":       resource.CreatedAt,
 		"updated_at":       resource.UpdatedAt,
 		"uploaded_by":      resource.UploadedBy,
-		"category_name":    resource.CategoryName,
+		"categories":       resource.Categories,
 	})
 }
 
-// DeleteResourceAPI removes a video resource and its file.
+// DeleteResourceAPI removes a video resource and its file, or unlinks from a category.
 // DELETE /api/resource/{id}
+// Query params:
+//
+//	category_name: if set and resource is in multiple categories, just unlink from this category
 func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -437,6 +499,31 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 	if !isAdmin && resource.UploadedBy != userID {
 		respondError(w, r, http.StatusForbidden, "You can only delete your own videos")
 		return
+	}
+
+	categoryName := r.URL.Query().Get("category_name")
+
+	// If category_name is provided, check how many categories this resource is in.
+	if categoryName != "" {
+		catCount, catErr := h.store.GetResourceCategoriesCount(id)
+		if catErr != nil {
+			slog.Error("failed to count resource categories", "id", id, "error", catErr)
+			respondError(w, r, http.StatusInternalServerError, "Failed to check category count")
+			return
+		}
+
+		// If more than 1 category, just unlink from this one (keep the file).
+		if catCount > 1 {
+			if err := h.store.RemoveResourceFromCategory(id, categoryName); err != nil {
+				slog.Error("failed to remove resource from category", "id", id, "category", categoryName, "error", err)
+				respondError(w, r, http.StatusInternalServerError, "Failed to remove from category")
+				return
+			}
+			slog.Info("resource unlinked from category", "id", id, "category", categoryName)
+			respondJSONOK(w, map[string]interface{}{"unlinked": true, "file_deleted": false})
+			return
+		}
+		// catCount <= 1: fall through to full delete below.
 	}
 
 	// Path traversal prevention.
@@ -461,7 +548,7 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 	}
 
 	slog.Info("resource deleted via API", "id", id)
-	respondJSONOK(w, nil)
+	respondJSONOK(w, map[string]interface{}{"file_deleted": true})
 }
 
 // UpdateReadme updates the readme file for a resource.

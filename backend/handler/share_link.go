@@ -34,6 +34,7 @@ func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		TargetType       string `json:"target_type"`
 		TargetID         string `json:"target_id"`
+		TargetCategory   string `json:"target_category"`
 		ExpiresInMinutes int    `json:"expires_in_minutes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -60,7 +61,7 @@ func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		if _, err := h.playlistStore.GetByID(req.TargetID); err != nil {
+		if _, err := h.playlistStore.GetByName(req.TargetCategory, req.TargetID); err != nil {
 			respondJSONError(w, "Playlist not found", http.StatusNotFound)
 			return
 		}

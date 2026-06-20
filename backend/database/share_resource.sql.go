@@ -19,7 +19,7 @@ type CreateShareResourceParams struct {
 	ResourceID string
 	Password   string
 	ExpiresAt  sql.NullTime
-	CreatedBy  sql.NullString
+	CreatedBy  string
 	CreatedAt  time.Time
 }
 

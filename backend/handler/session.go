@@ -100,12 +100,8 @@ func (h *SessionHandler) handleUserSession(w http.ResponseWriter, r *http.Reques
 	tokenBytes := make([]byte, 32)
 	if _, randErr := rand.Read(tokenBytes); randErr == nil {
 		tokenStr := hex.EncodeToString(tokenBytes)
-		role := "uploader"
-		if user.IsAdmin {
-			role = "admin"
-		}
 		expiresAt := time.Now().UTC().Add(30 * time.Minute)
-		if dbErr := model.SaveAPIToken(h.db, tokenStr, role, user.Name, expiresAt); dbErr == nil {
+		if dbErr := model.SaveAPIToken(h.db, tokenStr, user.Name, expiresAt); dbErr == nil {
 			apiToken = tokenStr
 		} else {
 			slog.Error("failed to save API token", "error", dbErr)
@@ -143,9 +139,19 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Load resource categories to determine access.
+	resourceCats, _ := h.resourceStore.GetResourceCategories(resource.ID)
+	isPublic := false
+	for _, c := range resourceCats {
+		if model.IsPublic(c) {
+			isPublic = true
+			break
+		}
+	}
+
 	// If user is authenticated and has category access, auto-auth
 	userID := middleware.GetUserID(r.Context(), h.sm)
-	if userID != "" && !model.IsPublic(resource.CategoryName) {
+	if userID != "" && !isPublic {
 		isAdmin := middleware.GetIsAdmin(r.Context(), h.sm)
 		// Admin can access everything
 		if isAdmin {
@@ -153,16 +159,20 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 			respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
 			return
 		}
-		// Check if user is assigned to this category
-		assigned, err := h.categoryStore.IsAssigned(userID, resource.CategoryName)
-		if err == nil && assigned {
-			middleware.SetVideoAuth(r.Context(), h.sm)
-			respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
-			return
+		// Check if user is assigned to any non-public category of this resource
+		for _, c := range resourceCats {
+			if !model.IsPublic(c) {
+				assigned, err := h.categoryStore.IsAssigned(userID, c)
+				if err == nil && assigned {
+					middleware.SetVideoAuth(r.Context(), h.sm)
+					respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
+					return
+				}
+			}
 		}
 	}
 
-	if model.IsPublic(resource.CategoryName) {
+	if isPublic {
 		// Public/global category — auto-auth
 		tokenBefore := h.sm.Token(r.Context())
 		slog.Debug("handleShareSession before SetVideoAuth", "token", tokenBefore, "resourceID", req.ResourceID)
@@ -173,7 +183,7 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 			tok := strings.TrimPrefix(auth, "Bearer ")
 			if apiToken, err := model.GetAPIToken(h.db, tok); err == nil {
-				isAdmin := apiToken.UserRole == "admin"
+				isAdmin := apiToken.IsAdmin
 				middleware.SetUserSession(r.Context(), h.sm, apiToken.Name, isAdmin)
 			}
 		}
@@ -214,7 +224,7 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		tok := strings.TrimPrefix(auth, "Bearer ")
 		if apiToken, err := model.GetAPIToken(h.db, tok); err == nil {
-			isAdmin := apiToken.UserRole == "admin"
+			isAdmin := apiToken.IsAdmin
 			middleware.SetUserSession(r.Context(), h.sm, apiToken.Name, isAdmin)
 		}
 	}
@@ -248,7 +258,7 @@ func (h *SessionHandler) handleTokenSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	isAdmin := apiToken.UserRole == "admin"
+	isAdmin := apiToken.IsAdmin
 	middleware.SetUserSession(r.Context(), h.sm, apiToken.Name, isAdmin)
 	slog.Info("session created from token", "user", apiToken.Name)
 

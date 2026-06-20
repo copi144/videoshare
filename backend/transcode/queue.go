@@ -24,23 +24,25 @@ type Job struct {
 
 // Queue manages a pool of transcoding workers.
 type Queue struct {
-	jobs   chan Job
-	cfg    *TranscodeConfig
-	store  *model.ResourceStore
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	jobs    chan Job
+	cfg     *TranscodeConfig
+	store   *model.ResourceStore
+	dataDir string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
 }
 
 // NewQueue creates a transcode queue with the given worker count and resource store.
-func NewQueue(cfg *TranscodeConfig, store *model.ResourceStore) *Queue {
+func NewQueue(cfg *TranscodeConfig, store *model.ResourceStore, dataDir string) *Queue {
 	ctx, cancel := context.WithCancel(context.Background())
 	q := &Queue{
-		jobs:   make(chan Job, 100),
-		cfg:    cfg,
-		store:  store,
-		ctx:    ctx,
-		cancel: cancel,
+		jobs:    make(chan Job, 100),
+		cfg:     cfg,
+		store:   store,
+		dataDir: dataDir,
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 	for i := 0; i < cfg.Workers; i++ {
 		q.wg.Add(1)
@@ -113,7 +115,6 @@ func (q *Queue) processJob(job Job) {
 	}
 }
 
-// processVideoJob runs HLS transcoding (existing logic).
 func (q *Queue) processVideoJob(job Job) {
 	// Probe input video dimensions to filter quality ladder.
 	dims, probeErr := upload.ProbeVideoDimensions(upload.FFprobePath(q.cfg.FFmpegPath), job.InputPath)
@@ -126,20 +127,30 @@ func (q *Queue) processVideoJob(job Job) {
 		slog.Info("adaptive quality ladder", "resource_id", job.ResourceID, "width", dims.Width, "height", dims.Height, "renditions", len(qualities))
 	}
 
+	// Use data/tmp/{ResourceID}/hls/ as temp output directory.
+	tmpDir := filepath.Join(q.dataDir, "tmp", job.ResourceID)
+	tmpHLSDir := filepath.Join(tmpDir, "hls")
+	finalHLSDir := storage.HLSPath(q.dataDir, job.ResourceID)
+
+	if err := os.MkdirAll(tmpHLSDir, 0o755); err != nil {
+		slog.Error("failed to create temp HLS directory", "resource_id", job.ResourceID, "error", err)
+		if statusErr := q.store.UpdateTranscodeStatus(job.ResourceID, "failed"); statusErr != nil {
+			slog.Error("failed to update transcode status", "resource_id", job.ResourceID, "error", statusErr)
+		}
+		return
+	}
+
 	// Run FFmpeg with 30-minute timeout.
 	ctx, cancel := context.WithTimeout(q.ctx, 30*time.Minute)
 	defer cancel()
 
-	cmd := BuildHLSCommand(q.cfg, job.InputPath, job.OutputDir, qualities)
+	cmd := BuildHLSCommand(q.cfg, job.InputPath, tmpHLSDir, qualities)
 	cmdWithCtx := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 
 	output, err := cmdWithCtx.CombinedOutput()
 	if err != nil {
 		slog.Error("transcode failed", "resource_id", job.ResourceID, "error", err, "output", string(output))
-		// Clean up partial HLS output.
-		if rmErr := os.RemoveAll(job.OutputDir); rmErr != nil {
-			slog.Error("failed to clean up HLS output after failed transcode", "resource_id", job.ResourceID, "error", rmErr)
-		}
+		os.RemoveAll(tmpDir)
 		if statusErr := q.store.UpdateTranscodeStatus(job.ResourceID, "failed"); statusErr != nil {
 			slog.Error("failed to update transcode status to failed", "resource_id", job.ResourceID, "error", statusErr)
 		}
@@ -147,13 +158,28 @@ func (q *Queue) processVideoJob(job Job) {
 	}
 
 	// Rename numbered outputs (0, 1, 2) to resolution names (360p, 720p, 1080p)
-	if err := RenameHLSOutputs(job.OutputDir, qualities); err != nil {
+	if err := RenameHLSOutputs(tmpHLSDir, qualities); err != nil {
 		slog.Error("failed to rename HLS outputs", "resource_id", job.ResourceID, "error", err)
+		os.RemoveAll(tmpDir)
 		if updateErr := q.store.UpdateTranscodeStatus(job.ResourceID, "failed"); updateErr != nil {
 			slog.Error("failed to update transcode status", "resource_id", job.ResourceID, "error", updateErr)
 		}
 		return
 	}
+
+	// Move HLS directory to final location.
+	os.RemoveAll(finalHLSDir)
+	if err := os.Rename(tmpHLSDir, finalHLSDir); err != nil {
+		slog.Error("failed to move HLS output to final location", "resource_id", job.ResourceID, "error", err)
+		os.RemoveAll(tmpDir)
+		if updateErr := q.store.UpdateTranscodeStatus(job.ResourceID, "failed"); updateErr != nil {
+			slog.Error("failed to update transcode status", "resource_id", job.ResourceID, "error", updateErr)
+		}
+		return
+	}
+
+	// Clean up temp dir.
+	os.RemoveAll(tmpDir)
 
 	slog.Info("transcode completed", "resource_id", job.ResourceID)
 	if err := q.store.UpdateTranscodeStatus(job.ResourceID, "done"); err != nil {
@@ -162,43 +188,87 @@ func (q *Queue) processVideoJob(job Job) {
 }
 
 func (q *Queue) processAudioJob(job Job) {
-	hashDir := filepath.Dir(job.InputPath)
-	outputPath := filepath.Join(hashDir, "transcoded", "output.mp3")
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
-		slog.Error("failed to create audio output dir", "resource_id", job.ResourceID, "error", err)
+	tmpDir := filepath.Join(q.dataDir, "tmp", job.ResourceID)
+	tmpOutputPath := filepath.Join(tmpDir, "transcoded", "output.mp3")
+	finalOutputPath := storage.AudioOutputPath(q.dataDir, job.ResourceID)
+
+	if err := os.MkdirAll(filepath.Dir(tmpOutputPath), 0o755); err != nil {
+		slog.Error("failed to create temp audio output dir", "resource_id", job.ResourceID, "error", err)
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(q.ctx, 10*time.Minute)
 	defer cancel()
-	cmd := BuildAudioCommand(q.cfg, job.InputPath, outputPath)
+	cmd := BuildAudioCommand(q.cfg, job.InputPath, tmpOutputPath)
 	cmdWithCtx := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 	output, err := cmdWithCtx.CombinedOutput()
 	if err != nil {
 		slog.Error("audio transcode failed", "resource_id", job.ResourceID, "error", err, "output", string(output))
+		os.RemoveAll(tmpDir)
 		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
 		return
 	}
+
+	// Move to final location.
+	if err := os.MkdirAll(filepath.Dir(finalOutputPath), 0o755); err != nil {
+		slog.Error("failed to create final audio output dir", "resource_id", job.ResourceID, "error", err)
+		os.RemoveAll(tmpDir)
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
+		return
+	}
+	os.Remove(finalOutputPath) // remove old transcode output if any
+	if err := os.Rename(tmpOutputPath, finalOutputPath); err != nil {
+		slog.Error("failed to move audio output", "resource_id", job.ResourceID, "error", err)
+		os.RemoveAll(tmpDir)
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
+		return
+	}
+
+	os.RemoveAll(tmpDir)
 	slog.Info("audio transcode completed", "resource_id", job.ResourceID)
 	q.store.UpdateTranscodeStatus(job.ResourceID, "done")
 }
 
 func (q *Queue) processImageJob(job Job) {
-	hashDir := filepath.Dir(job.InputPath)
-	outputPath := filepath.Join(hashDir, "thumb.jpg")
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
-		slog.Error("failed to create image output dir", "resource_id", job.ResourceID, "error", err)
+	tmpDir := filepath.Join(q.dataDir, "tmp", job.ResourceID)
+	tmpThumbPath := filepath.Join(tmpDir, "thumb.jpg")
+	finalThumbPath := filepath.Join(storage.HashPath(q.dataDir, storage.ResourceTypeImage, job.ResourceID), "thumb.jpg")
+
+	if err := os.MkdirAll(filepath.Dir(tmpThumbPath), 0o755); err != nil {
+		slog.Error("failed to create temp image output dir", "resource_id", job.ResourceID, "error", err)
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(q.ctx, 30*time.Second)
 	defer cancel()
-	cmd := BuildThumbnailCommand(q.cfg, job.InputPath, outputPath, 800)
+	cmd := BuildThumbnailCommand(q.cfg, job.InputPath, tmpThumbPath, 800)
 	cmdWithCtx := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 	output, err := cmdWithCtx.CombinedOutput()
 	if err != nil {
 		slog.Error("image thumbnail failed", "resource_id", job.ResourceID, "error", err, "output", string(output))
+		os.RemoveAll(tmpDir)
 		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
 		return
 	}
+
+	// Move to final location.
+	if err := os.MkdirAll(filepath.Dir(finalThumbPath), 0o755); err != nil {
+		slog.Error("failed to create final image output dir", "resource_id", job.ResourceID, "error", err)
+		os.RemoveAll(tmpDir)
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
+		return
+	}
+	os.Remove(finalThumbPath)
+	if err := os.Rename(tmpThumbPath, finalThumbPath); err != nil {
+		slog.Error("failed to move image thumbnail", "resource_id", job.ResourceID, "error", err)
+		os.RemoveAll(tmpDir)
+		q.store.UpdateTranscodeStatus(job.ResourceID, "failed")
+		return
+	}
+
+	os.RemoveAll(tmpDir)
 	slog.Info("image thumbnail completed", "resource_id", job.ResourceID)
 	q.store.UpdateTranscodeStatus(job.ResourceID, "done")
 }

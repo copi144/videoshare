@@ -128,7 +128,7 @@ func main() {
 
 	// Initialize transcode queue with access to the resource store for status updates.
 	tc := transcode.LoadTranscodeConfig()
-	tq := transcode.NewQueue(tc, resourceStore)
+	tq := transcode.NewQueue(tc, resourceStore, cfg.DataDir)
 	// tq.Shutdown() called explicitly in ordered shutdown (srv first)
 
 	// Reset stalled 'processing' jobs to 'pending' on startup.

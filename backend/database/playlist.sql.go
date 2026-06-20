@@ -7,20 +7,27 @@ package database
 
 import (
 	"context"
+	"time"
 )
 
 const addVideoToPlaylist = `-- name: AddVideoToPlaylist :exec
-INSERT INTO playlist_videos (playlist_id, resource_id, sort_order) VALUES (?, ?, ?) ON CONFLICT(playlist_id, resource_id) DO UPDATE SET sort_order = EXCLUDED.sort_order
+INSERT INTO playlist_videos (playlist_category_name, playlist_name, resource_id, sort_order) VALUES (?, ?, ?, ?) ON CONFLICT(playlist_category_name, playlist_name, resource_id) DO UPDATE SET sort_order = EXCLUDED.sort_order
 `
 
 type AddVideoToPlaylistParams struct {
-	PlaylistID string
-	ResourceID string
-	SortOrder  int64
+	PlaylistCategoryName string
+	PlaylistName         string
+	ResourceID           string
+	SortOrder            int64
 }
 
 func (q *Queries) AddVideoToPlaylist(ctx context.Context, arg AddVideoToPlaylistParams) error {
-	_, err := q.db.ExecContext(ctx, addVideoToPlaylist, arg.PlaylistID, arg.ResourceID, arg.SortOrder)
+	_, err := q.db.ExecContext(ctx, addVideoToPlaylist,
+		arg.PlaylistCategoryName,
+		arg.PlaylistName,
+		arg.ResourceID,
+		arg.SortOrder,
+	)
 	return err
 }
 
@@ -30,6 +37,33 @@ SELECT COUNT(*) FROM playlists
 
 func (q *Queries) CountPlaylists(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countPlaylists)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPlaylistsByCategory = `-- name: CountPlaylistsByCategory :one
+SELECT COUNT(*) FROM playlists WHERE category_name = ?
+`
+
+func (q *Queries) CountPlaylistsByCategory(ctx context.Context, categoryName string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPlaylistsByCategory, categoryName)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPlaylistsByCategoryAndType = `-- name: CountPlaylistsByCategoryAndType :one
+SELECT COUNT(*) FROM playlists WHERE category_name = ? AND playlist_type = ?
+`
+
+type CountPlaylistsByCategoryAndTypeParams struct {
+	CategoryName string
+	PlaylistType string
+}
+
+func (q *Queries) CountPlaylistsByCategoryAndType(ctx context.Context, arg CountPlaylistsByCategoryAndTypeParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPlaylistsByCategoryAndType, arg.CategoryName, arg.PlaylistType)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -47,11 +81,10 @@ func (q *Queries) CountPlaylistsByType(ctx context.Context, playlistType string)
 }
 
 const createPlaylist = `-- name: CreatePlaylist :exec
-INSERT INTO playlists (id, category_name, playlist_type, name, display_name, description, created_by, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO playlists (category_name, playlist_type, name, display_name, description, created_by, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreatePlaylistParams struct {
-	ID           string
 	CategoryName string
 	PlaylistType string
 	Name         string
@@ -63,7 +96,6 @@ type CreatePlaylistParams struct {
 
 func (q *Queries) CreatePlaylist(ctx context.Context, arg CreatePlaylistParams) error {
 	_, err := q.db.ExecContext(ctx, createPlaylist,
-		arg.ID,
 		arg.CategoryName,
 		arg.PlaylistType,
 		arg.Name,
@@ -76,23 +108,43 @@ func (q *Queries) CreatePlaylist(ctx context.Context, arg CreatePlaylistParams) 
 }
 
 const deletePlaylist = `-- name: DeletePlaylist :exec
-DELETE FROM playlists WHERE id = ?
+DELETE FROM playlists WHERE category_name = ? AND name = ?
 `
 
-func (q *Queries) DeletePlaylist(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deletePlaylist, id)
+type DeletePlaylistParams struct {
+	CategoryName string
+	Name         string
+}
+
+func (q *Queries) DeletePlaylist(ctx context.Context, arg DeletePlaylistParams) error {
+	_, err := q.db.ExecContext(ctx, deletePlaylist, arg.CategoryName, arg.Name)
 	return err
 }
 
 const getPlaylist = `-- name: GetPlaylist :one
-SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE id = ?
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? AND name = ?
 `
 
-func (q *Queries) GetPlaylist(ctx context.Context, id string) (Playlist, error) {
-	row := q.db.QueryRowContext(ctx, getPlaylist, id)
-	var i Playlist
+type GetPlaylistParams struct {
+	CategoryName string
+	Name         string
+}
+
+type GetPlaylistRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) GetPlaylist(ctx context.Context, arg GetPlaylistParams) (GetPlaylistRow, error) {
+	row := q.db.QueryRowContext(ctx, getPlaylist, arg.CategoryName, arg.Name)
+	var i GetPlaylistRow
 	err := row.Scan(
-		&i.ID,
 		&i.CategoryName,
 		&i.PlaylistType,
 		&i.Name,
@@ -106,22 +158,27 @@ func (q *Queries) GetPlaylist(ctx context.Context, id string) (Playlist, error) 
 }
 
 const getPlaylistsForResource = `-- name: GetPlaylistsForResource :many
-SELECT playlist_id FROM playlist_videos WHERE resource_id = ?
+SELECT playlist_category_name, playlist_name FROM playlist_videos WHERE resource_id = ?
 `
 
-func (q *Queries) GetPlaylistsForResource(ctx context.Context, resourceID string) ([]string, error) {
+type GetPlaylistsForResourceRow struct {
+	PlaylistCategoryName string
+	PlaylistName         string
+}
+
+func (q *Queries) GetPlaylistsForResource(ctx context.Context, resourceID string) ([]GetPlaylistsForResourceRow, error) {
 	rows, err := q.db.QueryContext(ctx, getPlaylistsForResource, resourceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []GetPlaylistsForResourceRow{}
 	for rows.Next() {
-		var playlist_id string
-		if err := rows.Scan(&playlist_id); err != nil {
+		var i GetPlaylistsForResourceRow
+		if err := rows.Scan(&i.PlaylistCategoryName, &i.PlaylistName); err != nil {
 			return nil, err
 		}
-		items = append(items, playlist_id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -133,20 +190,30 @@ func (q *Queries) GetPlaylistsForResource(ctx context.Context, resourceID string
 }
 
 const listAllPlaylists = `-- name: ListAllPlaylists :many
-SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC
 `
 
-func (q *Queries) ListAllPlaylists(ctx context.Context) ([]Playlist, error) {
+type ListAllPlaylistsRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListAllPlaylists(ctx context.Context) ([]ListAllPlaylistsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAllPlaylists)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Playlist{}
+	items := []ListAllPlaylistsRow{}
 	for rows.Next() {
-		var i Playlist
+		var i ListAllPlaylistsRow
 		if err := rows.Scan(
-			&i.ID,
 			&i.CategoryName,
 			&i.PlaylistType,
 			&i.Name,
@@ -170,11 +237,16 @@ func (q *Queries) ListAllPlaylists(ctx context.Context) ([]Playlist, error) {
 }
 
 const listPlaylistVideos = `-- name: ListPlaylistVideos :many
-SELECT resource_id FROM playlist_videos WHERE playlist_id = ? ORDER BY sort_order ASC
+SELECT resource_id FROM playlist_videos WHERE playlist_category_name = ? AND playlist_name = ? ORDER BY sort_order ASC
 `
 
-func (q *Queries) ListPlaylistVideos(ctx context.Context, playlistID string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listPlaylistVideos, playlistID)
+type ListPlaylistVideosParams struct {
+	PlaylistCategoryName string
+	PlaylistName         string
+}
+
+func (q *Queries) ListPlaylistVideos(ctx context.Context, arg ListPlaylistVideosParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listPlaylistVideos, arg.PlaylistCategoryName, arg.PlaylistName)
 	if err != nil {
 		return nil, err
 	}
@@ -197,20 +269,30 @@ func (q *Queries) ListPlaylistVideos(ctx context.Context, playlistID string) ([]
 }
 
 const listPlaylistsByCategory = `-- name: ListPlaylistsByCategory :many
-SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? ORDER BY sort_order ASC, created_at ASC
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? ORDER BY sort_order ASC, created_at ASC
 `
 
-func (q *Queries) ListPlaylistsByCategory(ctx context.Context, categoryName string) ([]Playlist, error) {
+type ListPlaylistsByCategoryRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPlaylistsByCategory(ctx context.Context, categoryName string) ([]ListPlaylistsByCategoryRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPlaylistsByCategory, categoryName)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Playlist{}
+	items := []ListPlaylistsByCategoryRow{}
 	for rows.Next() {
-		var i Playlist
+		var i ListPlaylistsByCategoryRow
 		if err := rows.Scan(
-			&i.ID,
 			&i.CategoryName,
 			&i.PlaylistType,
 			&i.Name,
@@ -234,7 +316,7 @@ func (q *Queries) ListPlaylistsByCategory(ctx context.Context, categoryName stri
 }
 
 const listPlaylistsByCategoryAndType = `-- name: ListPlaylistsByCategoryAndType :many
-SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? AND playlist_type = ? ORDER BY sort_order ASC, created_at ASC
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? AND playlist_type = ? ORDER BY sort_order ASC, created_at ASC
 `
 
 type ListPlaylistsByCategoryAndTypeParams struct {
@@ -242,17 +324,139 @@ type ListPlaylistsByCategoryAndTypeParams struct {
 	PlaylistType string
 }
 
-func (q *Queries) ListPlaylistsByCategoryAndType(ctx context.Context, arg ListPlaylistsByCategoryAndTypeParams) ([]Playlist, error) {
+type ListPlaylistsByCategoryAndTypeRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPlaylistsByCategoryAndType(ctx context.Context, arg ListPlaylistsByCategoryAndTypeParams) ([]ListPlaylistsByCategoryAndTypeRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPlaylistsByCategoryAndType, arg.CategoryName, arg.PlaylistType)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Playlist{}
+	items := []ListPlaylistsByCategoryAndTypeRow{}
 	for rows.Next() {
-		var i Playlist
+		var i ListPlaylistsByCategoryAndTypeRow
 		if err := rows.Scan(
-			&i.ID,
+			&i.CategoryName,
+			&i.PlaylistType,
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.CreatedBy,
+			&i.SortOrder,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlaylistsByCategoryAndTypePaginated = `-- name: ListPlaylistsByCategoryAndTypePaginated :many
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? AND playlist_type = ? ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?
+`
+
+type ListPlaylistsByCategoryAndTypePaginatedParams struct {
+	CategoryName string
+	PlaylistType string
+	Limit        int64
+	Offset       int64
+}
+
+type ListPlaylistsByCategoryAndTypePaginatedRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPlaylistsByCategoryAndTypePaginated(ctx context.Context, arg ListPlaylistsByCategoryAndTypePaginatedParams) ([]ListPlaylistsByCategoryAndTypePaginatedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlaylistsByCategoryAndTypePaginated,
+		arg.CategoryName,
+		arg.PlaylistType,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlaylistsByCategoryAndTypePaginatedRow{}
+	for rows.Next() {
+		var i ListPlaylistsByCategoryAndTypePaginatedRow
+		if err := rows.Scan(
+			&i.CategoryName,
+			&i.PlaylistType,
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.CreatedBy,
+			&i.SortOrder,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlaylistsByCategoryPaginated = `-- name: ListPlaylistsByCategoryPaginated :many
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE category_name = ? ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?
+`
+
+type ListPlaylistsByCategoryPaginatedParams struct {
+	CategoryName string
+	Limit        int64
+	Offset       int64
+}
+
+type ListPlaylistsByCategoryPaginatedRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPlaylistsByCategoryPaginated(ctx context.Context, arg ListPlaylistsByCategoryPaginatedParams) ([]ListPlaylistsByCategoryPaginatedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlaylistsByCategoryPaginated, arg.CategoryName, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlaylistsByCategoryPaginatedRow{}
+	for rows.Next() {
+		var i ListPlaylistsByCategoryPaginatedRow
+		if err := rows.Scan(
 			&i.CategoryName,
 			&i.PlaylistType,
 			&i.Name,
@@ -276,20 +480,30 @@ func (q *Queries) ListPlaylistsByCategoryAndType(ctx context.Context, arg ListPl
 }
 
 const listPlaylistsByType = `-- name: ListPlaylistsByType :many
-SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC
 `
 
-func (q *Queries) ListPlaylistsByType(ctx context.Context, playlistType string) ([]Playlist, error) {
+type ListPlaylistsByTypeRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPlaylistsByType(ctx context.Context, playlistType string) ([]ListPlaylistsByTypeRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPlaylistsByType, playlistType)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Playlist{}
+	items := []ListPlaylistsByTypeRow{}
 	for rows.Next() {
-		var i Playlist
+		var i ListPlaylistsByTypeRow
 		if err := rows.Scan(
-			&i.ID,
 			&i.CategoryName,
 			&i.PlaylistType,
 			&i.Name,
@@ -313,7 +527,7 @@ func (q *Queries) ListPlaylistsByType(ctx context.Context, playlistType string) 
 }
 
 const listPlaylistsByTypePaginated = `-- name: ListPlaylistsByTypePaginated :many
-SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists WHERE playlist_type = ? ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?
 `
 
 type ListPlaylistsByTypePaginatedParams struct {
@@ -322,17 +536,27 @@ type ListPlaylistsByTypePaginatedParams struct {
 	Offset       int64
 }
 
-func (q *Queries) ListPlaylistsByTypePaginated(ctx context.Context, arg ListPlaylistsByTypePaginatedParams) ([]Playlist, error) {
+type ListPlaylistsByTypePaginatedRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPlaylistsByTypePaginated(ctx context.Context, arg ListPlaylistsByTypePaginatedParams) ([]ListPlaylistsByTypePaginatedRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPlaylistsByTypePaginated, arg.PlaylistType, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Playlist{}
+	items := []ListPlaylistsByTypePaginatedRow{}
 	for rows.Next() {
-		var i Playlist
+		var i ListPlaylistsByTypePaginatedRow
 		if err := rows.Scan(
-			&i.ID,
 			&i.CategoryName,
 			&i.PlaylistType,
 			&i.Name,
@@ -356,7 +580,7 @@ func (q *Queries) ListPlaylistsByTypePaginated(ctx context.Context, arg ListPlay
 }
 
 const listPlaylistsPaginated = `-- name: ListPlaylistsPaginated :many
-SELECT id, category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?
+SELECT category_name, playlist_type, name, display_name, description, created_by, sort_order, created_at FROM playlists ORDER BY sort_order ASC, created_at ASC LIMIT ? OFFSET ?
 `
 
 type ListPlaylistsPaginatedParams struct {
@@ -364,17 +588,27 @@ type ListPlaylistsPaginatedParams struct {
 	Offset int64
 }
 
-func (q *Queries) ListPlaylistsPaginated(ctx context.Context, arg ListPlaylistsPaginatedParams) ([]Playlist, error) {
+type ListPlaylistsPaginatedRow struct {
+	CategoryName string
+	PlaylistType string
+	Name         string
+	DisplayName  string
+	Description  string
+	CreatedBy    string
+	SortOrder    int64
+	CreatedAt    time.Time
+}
+
+func (q *Queries) ListPlaylistsPaginated(ctx context.Context, arg ListPlaylistsPaginatedParams) ([]ListPlaylistsPaginatedRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPlaylistsPaginated, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Playlist{}
+	items := []ListPlaylistsPaginatedRow{}
 	for rows.Next() {
-		var i Playlist
+		var i ListPlaylistsPaginatedRow
 		if err := rows.Scan(
-			&i.ID,
 			&i.CategoryName,
 			&i.PlaylistType,
 			&i.Name,
@@ -398,38 +632,39 @@ func (q *Queries) ListPlaylistsPaginated(ctx context.Context, arg ListPlaylistsP
 }
 
 const removeVideoFromPlaylist = `-- name: RemoveVideoFromPlaylist :exec
-DELETE FROM playlist_videos WHERE playlist_id = ? AND resource_id = ?
+DELETE FROM playlist_videos WHERE playlist_category_name = ? AND playlist_name = ? AND resource_id = ?
 `
 
 type RemoveVideoFromPlaylistParams struct {
-	PlaylistID string
-	ResourceID string
+	PlaylistCategoryName string
+	PlaylistName         string
+	ResourceID           string
 }
 
 func (q *Queries) RemoveVideoFromPlaylist(ctx context.Context, arg RemoveVideoFromPlaylistParams) error {
-	_, err := q.db.ExecContext(ctx, removeVideoFromPlaylist, arg.PlaylistID, arg.ResourceID)
+	_, err := q.db.ExecContext(ctx, removeVideoFromPlaylist, arg.PlaylistCategoryName, arg.PlaylistName, arg.ResourceID)
 	return err
 }
 
 const updatePlaylist = `-- name: UpdatePlaylist :exec
-UPDATE playlists SET name = ?, display_name = ?, description = ?, sort_order = ? WHERE id = ?
+UPDATE playlists SET display_name = ?, description = ?, sort_order = ? WHERE category_name = ? AND name = ?
 `
 
 type UpdatePlaylistParams struct {
-	Name        string
-	DisplayName string
-	Description string
-	SortOrder   int64
-	ID          string
+	DisplayName  string
+	Description  string
+	SortOrder    int64
+	CategoryName string
+	Name         string
 }
 
 func (q *Queries) UpdatePlaylist(ctx context.Context, arg UpdatePlaylistParams) error {
 	_, err := q.db.ExecContext(ctx, updatePlaylist,
-		arg.Name,
 		arg.DisplayName,
 		arg.Description,
 		arg.SortOrder,
-		arg.ID,
+		arg.CategoryName,
+		arg.Name,
 	)
 	return err
 }

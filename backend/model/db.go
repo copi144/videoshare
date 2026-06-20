@@ -107,10 +107,10 @@ func BootstrapGlobalCategory(db *sql.DB, adminName string) error {
 func migrate(db *sql.DB) error {
 	query := `CREATE TABLE IF NOT EXISTS resources (
 		id TEXT PRIMARY KEY,
-		title TEXT NOT NULL DEFAULT '',
-		filename TEXT NOT NULL DEFAULT '',
-		file_size INTEGER NOT NULL DEFAULT 0,
-		content_type TEXT NOT NULL DEFAULT 'video/mp4',
+		title TEXT NOT NULL,
+		filename TEXT NOT NULL,
+		file_size INTEGER NOT NULL,
+		content_type TEXT NOT NULL,
 		views INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -135,7 +135,7 @@ func migrate(db *sql.DB) error {
 	}
 
 	// Add new columns to resources table (idempotent — errors are expected if columns exist)
-	columns := []string{"uploaded_by", "category_name", "transcode_status", "banned", "no_transcode", "resource_type"}
+	columns := []string{"uploaded_by", "transcode_status", "banned", "no_transcode", "resource_type"}
 	for _, col := range columns {
 		var def string
 		switch col {
@@ -147,8 +147,6 @@ func migrate(db *sql.DB) error {
 			def = "TEXT NOT NULL DEFAULT 'none'"
 		case "resource_type":
 			def = "TEXT NOT NULL DEFAULT 'video'"
-		case "category_name":
-			def = "TEXT REFERENCES categories(name)"
 		default:
 			def = "TEXT REFERENCES users(name)"
 		}
@@ -182,26 +180,27 @@ func migrate(db *sql.DB) error {
 			PRIMARY KEY (category_name, name)
 		)`,
 		`CREATE TABLE IF NOT EXISTS playlists (
-			id TEXT PRIMARY KEY,
-			category_name TEXT NOT NULL REFERENCES categories(name) ON DELETE CASCADE,
-			playlist_type TEXT NOT NULL DEFAULT 'video',
 			name TEXT NOT NULL,
+			category_name TEXT NOT NULL REFERENCES categories(name) ON DELETE CASCADE,
+			playlist_type TEXT NOT NULL,
 			display_name TEXT NOT NULL DEFAULT '',
 			description TEXT NOT NULL DEFAULT '',
 			created_by TEXT NOT NULL REFERENCES users(name),
 			sort_order INTEGER NOT NULL DEFAULT 0,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (category_name, name)
 		)`,
 		`CREATE TABLE IF NOT EXISTS playlist_videos (
-			playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+			playlist_category_name TEXT NOT NULL,
+			playlist_name TEXT NOT NULL,
 			resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
 			sort_order INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (playlist_id, resource_id)
+			PRIMARY KEY (playlist_category_name, playlist_name, resource_id),
+			FOREIGN KEY (playlist_category_name, playlist_name) REFERENCES playlists(category_name, name) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS api_tokens (
 			token TEXT PRIMARY KEY,
-			user_role TEXT NOT NULL,
-			username TEXT NOT NULL,
+			username TEXT NOT NULL REFERENCES users(name),
 			expires_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -221,10 +220,10 @@ func migrate(db *sql.DB) error {
 
 	// New share_resources table
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS share_resources (
-		resource_id TEXT NOT NULL REFERENCES resources(id),
+		resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
 		password TEXT NOT NULL,
 		expires_at DATETIME,
-		created_by TEXT,
+		created_by TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (resource_id, password)
 	)`); err != nil {
@@ -238,10 +237,25 @@ func migrate(db *sql.DB) error {
 		target_type TEXT NOT NULL,
 		target_id TEXT NOT NULL,
 		expires_at DATETIME,
-		created_by TEXT NOT NULL,
+		created_by TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`); err != nil {
 		return fmt.Errorf("create share_links: %w", err)
+	}
+
+	// Resource-categories join table (many-to-many)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS resource_categories (
+		resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+		category_name TEXT NOT NULL REFERENCES categories(name) ON DELETE CASCADE,
+		PRIMARY KEY (resource_id, category_name)
+	)`); err != nil {
+		return fmt.Errorf("create resource_categories: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resource_categories_resource_id ON resource_categories(resource_id)"); err != nil {
+		return fmt.Errorf("create resource_categories resource_id index: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resource_categories_category_name ON resource_categories(category_name)"); err != nil {
+		return fmt.Errorf("create resource_categories category_name index: %w", err)
 	}
 
 	// Explicit performance indexes (added for pagination and list queries; idempotent)
@@ -250,9 +264,6 @@ func migrate(db *sql.DB) error {
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_uploaded_by ON resources(uploaded_by)"); err != nil {
 		return fmt.Errorf("create resources uploaded_by index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_category_name ON resources(category_name)"); err != nil {
-		return fmt.Errorf("create resources category_name index: %w", err)
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_transcode_status ON resources(transcode_status)"); err != nil {
 		return fmt.Errorf("create resources transcode_status index: %w", err)
@@ -280,6 +291,21 @@ func migrate(db *sql.DB) error {
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_playlist_type ON playlists(playlist_type)"); err != nil {
 		return fmt.Errorf("create playlists playlist_type index: %w", err)
+	}
+
+	// Indexes for playlist_videos resource_id lookups (GetPlaylistsForResource)
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlist_videos_resource_id ON playlist_videos(resource_id)"); err != nil {
+		return fmt.Errorf("create playlist_videos resource_id index: %w", err)
+	}
+
+	// Index for category_users name lookups (ListCategoriesByUploader)
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_category_users_name ON category_users(name)"); err != nil {
+		return fmt.Errorf("create category_users name index: %w", err)
+	}
+
+	// Composite index for share_links target lookups (ListByTarget)
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_share_links_target ON share_links(target_type, target_id)"); err != nil {
+		return fmt.Errorf("create share_links target index: %w", err)
 	}
 
 	return nil

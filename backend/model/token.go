@@ -8,17 +8,17 @@ import (
 // APIToken represents a stored API token for cookie-free API authentication.
 type APIToken struct {
 	Token     string
-	UserRole  string
 	Name      string
+	IsAdmin   bool
 	ExpiresAt time.Time
 	CreatedAt time.Time
 }
 
 // SaveAPIToken inserts a new API token into the database.
-func SaveAPIToken(db *sql.DB, token, role, name string, expiresAt time.Time) error {
+func SaveAPIToken(db *sql.DB, token, name string, expiresAt time.Time) error {
 	_, err := db.Exec(
-		"INSERT INTO api_tokens (token, user_role, username, expires_at) VALUES (?, ?, ?, ?)",
-		token, role, name, expiresAt,
+		"INSERT INTO api_tokens (token, username, expires_at) VALUES (?, ?, ?)",
+		token, name, expiresAt,
 	)
 	return err
 }
@@ -28,9 +28,9 @@ func SaveAPIToken(db *sql.DB, token, role, name string, expiresAt time.Time) err
 func GetAPIToken(db *sql.DB, token string) (*APIToken, error) {
 	t := &APIToken{}
 	err := db.QueryRow(
-		"SELECT token, user_role, username, expires_at, created_at FROM api_tokens WHERE token = ? AND expires_at > ?",
+		"SELECT a.token, a.username, u.is_admin, a.expires_at, a.created_at FROM api_tokens a JOIN users u ON a.username = u.name WHERE a.token = ? AND a.expires_at > ?",
 		token, time.Now().UTC(),
-	).Scan(&t.Token, &t.UserRole, &t.Name, &t.ExpiresAt, &t.CreatedAt)
+	).Scan(&t.Token, &t.Name, &t.IsAdmin, &t.ExpiresAt, &t.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

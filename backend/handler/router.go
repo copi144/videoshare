@@ -104,9 +104,9 @@ func NewRouter(sm *scs.SessionManager,
 			// JSON API routes for playlists (admin only)
 			r.Get("/api/playlists", playlistH.ListPlaylistsAPI)
 			r.Post("/api/playlists", playlistH.CreatePlaylistAPI)
-			r.Delete("/api/playlists/{id}", playlistH.DeletePlaylistAPI)
-			r.Post("/api/playlists/{id}/videos", playlistH.AddVideoAPI)
-			r.Delete("/api/playlists/{id}/videos/{resourceId}", playlistH.RemoveVideoAPI)
+			r.Delete("/api/playlists/{name}", playlistH.DeletePlaylistAPI)
+			r.Post("/api/playlists/{name}/videos", playlistH.AddVideoAPI)
+			r.Delete("/api/playlists/{name}/videos/{resourceId}", playlistH.RemoveVideoAPI)
 		})
 
 		// User management — admin only

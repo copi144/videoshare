@@ -26,7 +26,7 @@ INSERT INTO categories (name, display_name, description, created_by) VALUES (?, 
 DELETE FROM categories WHERE name = ?;
 
 -- name: GetCategoryVideoCount :one
-SELECT COUNT(*) FROM resources WHERE category_name = ?;
+SELECT COUNT(*) FROM resource_categories WHERE category_name = ?;
 
 -- name: ListUploaders :many
 SELECT name, can_upload FROM category_users WHERE category_name = ?;

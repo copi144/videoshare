@@ -10,10 +10,9 @@ import (
 
 // Playlist represents a playlist within a category.
 type Playlist struct {
-	ID           string    `json:"id"`
+	Name         string    `json:"name"`
 	CategoryName string    `json:"category_name"`
 	PlaylistType string    `json:"playlist_type"`
-	Name         string    `json:"name"`
 	DisplayName  string    `json:"display_name"`
 	Description  string    `json:"description"`
 	CreatedBy    string    `json:"created_by"`
@@ -36,7 +35,6 @@ func NewPlaylistStore(db *sql.DB) *PlaylistStore {
 func (s *PlaylistStore) Insert(p *Playlist) error {
 	ctx := context.Background()
 	return s.q.CreatePlaylist(ctx, database.CreatePlaylistParams{
-		ID:           p.ID,
 		CategoryName: p.CategoryName,
 		PlaylistType: p.PlaylistType,
 		Name:         p.Name,
@@ -47,18 +45,20 @@ func (s *PlaylistStore) Insert(p *Playlist) error {
 	})
 }
 
-// GetByID retrieves a playlist by ID.
-func (s *PlaylistStore) GetByID(id string) (*Playlist, error) {
+// GetByName retrieves a playlist by category name and playlist name.
+func (s *PlaylistStore) GetByName(categoryName, name string) (*Playlist, error) {
 	ctx := context.Background()
-	p, err := s.q.GetPlaylist(ctx, id)
+	p, err := s.q.GetPlaylist(ctx, database.GetPlaylistParams{
+		CategoryName: categoryName,
+		Name:         name,
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &Playlist{
-		ID:           p.ID,
+		Name:         p.Name,
 		CategoryName: p.CategoryName,
 		PlaylistType: p.PlaylistType,
-		Name:         p.Name,
 		DisplayName:  p.DisplayName,
 		Description:  p.Description,
 		CreatedBy:    p.CreatedBy,
@@ -68,19 +68,18 @@ func (s *PlaylistStore) GetByID(id string) (*Playlist, error) {
 }
 
 // ListByCategory returns playlists in a category.
-func (s *PlaylistStore) ListByCategory(categoryID string) ([]*Playlist, error) {
+func (s *PlaylistStore) ListByCategory(categoryName string) ([]*Playlist, error) {
 	ctx := context.Background()
-	items, err := s.q.ListPlaylistsByCategory(ctx, categoryID)
+	items, err := s.q.ListPlaylistsByCategory(ctx, categoryName)
 	if err != nil {
 		return nil, err
 	}
 	playlists := make([]*Playlist, 0, len(items))
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
-			ID:           p.ID,
+			Name:         p.Name,
 			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
-			Name:         p.Name,
 			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
@@ -92,34 +91,46 @@ func (s *PlaylistStore) ListByCategory(categoryID string) ([]*Playlist, error) {
 }
 
 // AddVideo adds a video to a playlist.
-func (s *PlaylistStore) AddVideo(playlistID, resourceID string, sortOrder int) error {
+func (s *PlaylistStore) AddVideo(playlistCategoryName, playlistName, resourceID string, sortOrder int) error {
 	ctx := context.Background()
 	return s.q.AddVideoToPlaylist(ctx, database.AddVideoToPlaylistParams{
-		PlaylistID: playlistID,
-		ResourceID: resourceID,
-		SortOrder:  int64(sortOrder),
+		PlaylistCategoryName: playlistCategoryName,
+		PlaylistName:         playlistName,
+		ResourceID:           resourceID,
+		SortOrder:            int64(sortOrder),
 	})
 }
 
 // RemoveVideo removes a video from a playlist.
-func (s *PlaylistStore) RemoveVideo(playlistID, resourceID string) error {
+func (s *PlaylistStore) RemoveVideo(playlistCategoryName, playlistName, resourceID string) error {
 	ctx := context.Background()
 	return s.q.RemoveVideoFromPlaylist(ctx, database.RemoveVideoFromPlaylistParams{
-		PlaylistID: playlistID,
-		ResourceID: resourceID,
+		PlaylistCategoryName: playlistCategoryName,
+		PlaylistName:         playlistName,
+		ResourceID:           resourceID,
 	})
 }
 
 // ListVideos returns resource IDs in a playlist, ordered by sort_order.
-func (s *PlaylistStore) ListVideos(playlistID string) ([]string, error) {
+func (s *PlaylistStore) ListVideos(playlistCategoryName, playlistName string) ([]string, error) {
 	ctx := context.Background()
-	return s.q.ListPlaylistVideos(ctx, playlistID)
+	rows, err := s.q.ListPlaylistVideos(ctx, database.ListPlaylistVideosParams{
+		PlaylistCategoryName: playlistCategoryName,
+		PlaylistName:         playlistName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 // Delete removes a playlist.
-func (s *PlaylistStore) Delete(id string) error {
+func (s *PlaylistStore) Delete(categoryName, name string) error {
 	ctx := context.Background()
-	return s.q.DeletePlaylist(ctx, id)
+	return s.q.DeletePlaylist(ctx, database.DeletePlaylistParams{
+		CategoryName: categoryName,
+		Name:         name,
+	})
 }
 
 // ListAll returns all playlists ordered by sort_order then creation date.
@@ -132,10 +143,9 @@ func (s *PlaylistStore) ListAll() ([]*Playlist, error) {
 	playlists := make([]*Playlist, 0, len(items))
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
-			ID:           p.ID,
+			Name:         p.Name,
 			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
-			Name:         p.Name,
 			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
@@ -159,10 +169,9 @@ func (s *PlaylistStore) ListPaginated(limit, offset int) ([]*Playlist, error) {
 	playlists := make([]*Playlist, 0, len(items))
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
-			ID:           p.ID,
+			Name:         p.Name,
 			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
-			Name:         p.Name,
 			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
@@ -180,8 +189,8 @@ func (s *PlaylistStore) Count() (int, error) {
 	return int(count), err
 }
 
-// GetPlaylistsForResource returns playlist IDs that a resource belongs to.
-func (s *PlaylistStore) GetPlaylistsForResource(resourceID string) ([]string, error) {
+// GetPlaylistsForResource returns (category, name) pairs for playlists containing a resource.
+func (s *PlaylistStore) GetPlaylistsForResource(resourceID string) ([]database.GetPlaylistsForResourceRow, error) {
 	ctx := context.Background()
 	return s.q.GetPlaylistsForResource(ctx, resourceID)
 }
@@ -196,10 +205,9 @@ func (s *PlaylistStore) ListByType(playlistType string) ([]*Playlist, error) {
 	playlists := make([]*Playlist, 0, len(items))
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
-			ID:           p.ID,
+			Name:         p.Name,
 			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
-			Name:         p.Name,
 			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
@@ -224,10 +232,9 @@ func (s *PlaylistStore) ListByTypePaginated(playlistType string, limit, offset i
 	playlists := make([]*Playlist, 0, len(items))
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
-			ID:           p.ID,
+			Name:         p.Name,
 			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
-			Name:         p.Name,
 			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
@@ -246,10 +253,10 @@ func (s *PlaylistStore) CountByType(playlistType string) (int, error) {
 }
 
 // ListByCategoryAndType returns playlists in a category with the given type.
-func (s *PlaylistStore) ListByCategoryAndType(categoryID, playlistType string) ([]*Playlist, error) {
+func (s *PlaylistStore) ListByCategoryAndType(categoryName, playlistType string) ([]*Playlist, error) {
 	ctx := context.Background()
 	items, err := s.q.ListPlaylistsByCategoryAndType(ctx, database.ListPlaylistsByCategoryAndTypeParams{
-		CategoryName: categoryID,
+		CategoryName: categoryName,
 		PlaylistType: playlistType,
 	})
 	if err != nil {
@@ -258,10 +265,9 @@ func (s *PlaylistStore) ListByCategoryAndType(categoryID, playlistType string) (
 	playlists := make([]*Playlist, 0, len(items))
 	for _, p := range items {
 		playlists = append(playlists, &Playlist{
-			ID:           p.ID,
+			Name:         p.Name,
 			CategoryName: p.CategoryName,
 			PlaylistType: p.PlaylistType,
-			Name:         p.Name,
 			DisplayName:  p.DisplayName,
 			Description:  p.Description,
 			CreatedBy:    p.CreatedBy,
@@ -270,4 +276,76 @@ func (s *PlaylistStore) ListByCategoryAndType(categoryID, playlistType string) (
 		})
 	}
 	return playlists, nil
+}
+
+// ListByCategoryPaginated returns a page of playlists in a category.
+func (s *PlaylistStore) ListByCategoryPaginated(categoryName string, limit, offset int) ([]*Playlist, error) {
+	ctx := context.Background()
+	items, err := s.q.ListPlaylistsByCategoryPaginated(ctx, database.ListPlaylistsByCategoryPaginatedParams{
+		CategoryName: categoryName,
+		Limit:        int64(limit),
+		Offset:       int64(offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+	playlists := make([]*Playlist, 0, len(items))
+	for _, p := range items {
+		playlists = append(playlists, &Playlist{
+			Name:         p.Name,
+			CategoryName: p.CategoryName,
+			PlaylistType: p.PlaylistType,
+			DisplayName:  p.DisplayName,
+			Description:  p.Description,
+			CreatedBy:    p.CreatedBy,
+			SortOrder:    int(p.SortOrder),
+			CreatedAt:    p.CreatedAt,
+		})
+	}
+	return playlists, nil
+}
+
+// CountByCategory returns the total number of playlists in a category.
+func (s *PlaylistStore) CountByCategory(categoryName string) (int, error) {
+	ctx := context.Background()
+	count, err := s.q.CountPlaylistsByCategory(ctx, categoryName)
+	return int(count), err
+}
+
+// ListByCategoryAndTypePaginated returns a page of playlists in a category with the given type.
+func (s *PlaylistStore) ListByCategoryAndTypePaginated(categoryName, playlistType string, limit, offset int) ([]*Playlist, error) {
+	ctx := context.Background()
+	items, err := s.q.ListPlaylistsByCategoryAndTypePaginated(ctx, database.ListPlaylistsByCategoryAndTypePaginatedParams{
+		CategoryName: categoryName,
+		PlaylistType: playlistType,
+		Limit:        int64(limit),
+		Offset:       int64(offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+	playlists := make([]*Playlist, 0, len(items))
+	for _, p := range items {
+		playlists = append(playlists, &Playlist{
+			Name:         p.Name,
+			CategoryName: p.CategoryName,
+			PlaylistType: p.PlaylistType,
+			DisplayName:  p.DisplayName,
+			Description:  p.Description,
+			CreatedBy:    p.CreatedBy,
+			SortOrder:    int(p.SortOrder),
+			CreatedAt:    p.CreatedAt,
+		})
+	}
+	return playlists, nil
+}
+
+// CountByCategoryAndType returns the total number of playlists in a category with the given type.
+func (s *PlaylistStore) CountByCategoryAndType(categoryName, playlistType string) (int, error) {
+	ctx := context.Background()
+	count, err := s.q.CountPlaylistsByCategoryAndType(ctx, database.CountPlaylistsByCategoryAndTypeParams{
+		CategoryName: categoryName,
+		PlaylistType: playlistType,
+	})
+	return int(count), err
 }

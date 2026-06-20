@@ -83,7 +83,7 @@ export interface Resource {
   created_at: string;
   updated_at: string;
   uploaded_by: string;
-  category_name: string;
+  categories?: string[];
   uploaded_username?: string;
 }
 
@@ -92,14 +92,13 @@ export interface ResourceDetail extends Resource {
 }
 
 // Resources
-export const listResources = (params?: {limit?: number; offset?: number; category_name?: string; playlist_id?: string; resource_type?: string}) => {
+export const listResources = (params?: {limit?: number; offset?: number; category_name?: string; resource_type?: string}) => {
   let path = '/api/resources';
   if (params) {
     const qs = new URLSearchParams();
     if (params.limit !== undefined) qs.set('limit', String(params.limit));
     if (params.offset !== undefined) qs.set('offset', String(params.offset));
     if (params.category_name !== undefined) qs.set('category_name', params.category_name);
-    if (params.playlist_id !== undefined) qs.set('playlist_id', params.playlist_id);
     if (params.resource_type !== undefined) qs.set('resource_type', params.resource_type);
     const query = qs.toString();
     if (query) path += `?${query}`;
@@ -113,8 +112,13 @@ export const getResource = (id: string) =>
 export const uploadVideo = (formData: FormData) =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/upload', formData);
 
-export const deleteResource = (id: string) =>
-  request<{ok: boolean}>('DELETE', `/api/resource/${id}`);
+export const deleteResource = (id: string, categoryName?: string) => {
+  let path = `/api/resource/${id}`;
+  if (categoryName) {
+    path += `?category_name=${encodeURIComponent(categoryName)}`;
+  }
+  return request<{ok: boolean; file_deleted?: boolean; unlinked?: boolean}>('DELETE', path);
+};
 
 export const retranscode = (id: string) =>
   request<{ok: boolean}>('POST', `/api/resources/${id}/retranscode`);
@@ -171,14 +175,14 @@ export const listPlaylists = (params?: {limit?: number; offset?: number; categor
 export const createPlaylist = (name: string, displayName: string, description: string, categoryName: string, playlistType?: string) =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/playlists', { name, display_name: displayName, description, category_name: categoryName, playlist_type: playlistType });
 
-export const deletePlaylist = (id: string) =>
-  request<{ok: boolean}>('DELETE', `/api/playlists/${id}`);
+export const deletePlaylist = (name: string, categoryName: string) =>
+  request<{ok: boolean}>('DELETE', `/api/playlists/${name}?category_name=${encodeURIComponent(categoryName)}`);
 
-export const addVideoToPlaylist = (playlistId: string, resourceId: string) =>
-  request<{ok: boolean; redirect?: string}>('POST', `/api/playlists/${playlistId}/videos`, { resource_id: resourceId });
+export const addVideoToPlaylist = (playlistName: string, categoryName: string, resourceId: string) =>
+  request<{ok: boolean; redirect?: string}>('POST', `/api/playlists/${playlistName}/videos?category_name=${encodeURIComponent(categoryName)}`, { resource_id: resourceId });
 
-export const removeVideoFromPlaylist = (playlistId: string, resourceId: string) =>
-  request<{ok: boolean}>('DELETE', `/api/playlists/${playlistId}/videos/${resourceId}`);
+export const removeVideoFromPlaylist = (playlistName: string, categoryName: string, resourceId: string) =>
+  request<{ok: boolean}>('DELETE', `/api/playlists/${playlistName}/videos/${resourceId}?category_name=${encodeURIComponent(categoryName)}`);
 
 // Resource Share Links — API: /api/share-resources
 export const createShareLink = (resourceId: string, expiresInMinutes: number) =>

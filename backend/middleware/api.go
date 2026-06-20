@@ -52,7 +52,7 @@ func APIAuth(db *sql.DB, sm *scs.SessionManager) func(http.Handler) http.Handler
 				slog.Warn("failed to refresh API token expiry", "error", refreshErr)
 			}
 
-			isAdmin := apiToken.UserRole == "admin"
+			isAdmin := apiToken.IsAdmin
 
 			// Set user session so session-based auth (e.g. RequireUserAuth) also works.
 			SetUserSession(r.Context(), sm, apiToken.Name, isAdmin)

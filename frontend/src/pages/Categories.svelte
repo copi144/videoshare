@@ -180,7 +180,7 @@
         <tbody>
           {#each categories as cat}
             <tr class="border-b border-gray-100">
-              <td class="py-2 pr-4">{cat.name}</td>
+              <td class="py-2 pr-4"><a href="/#/c/{cat.name}" class="text-indigo-600 hover:text-indigo-800 underline">{cat.name}</a></td>
               <td class="py-2 pr-4 text-gray-500">{cat.display_name || '—'}</td>
               <td class="py-2 pr-4 text-gray-500">{cat.description || '—'}</td>
               <td class="py-2 pr-4 text-gray-500">{new Date(cat.created_at).toLocaleDateString()}</td>

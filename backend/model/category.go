@@ -244,7 +244,7 @@ func (s *CategoryStore) IsAssigned(userName, categoryName string) (bool, error) 
 // GetVideoCount returns the number of resources in a given category.
 func (s *CategoryStore) GetVideoCount(categoryName string) (int, error) {
 	ctx := context.Background()
-	count, err := s.q.GetCategoryVideoCount(ctx, sql.NullString{String: categoryName, Valid: categoryName != ""})
+	count, err := s.q.GetCategoryVideoCount(ctx, categoryName)
 	return int(count), err
 }
 

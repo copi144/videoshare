@@ -77,12 +77,8 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 		apiToken := hex.EncodeToString(apiTokenBytes)
 
 		// Store in api_tokens table for cookie-free API auth
-		role := "uploader"
-		if user.IsAdmin {
-			role = "admin"
-		}
 		expiresAt := time.Now().UTC().Add(30 * time.Minute)
-		if dbErr := model.SaveAPIToken(h.db, apiToken, role, user.Name, expiresAt); dbErr != nil {
+		if dbErr := model.SaveAPIToken(h.db, apiToken, user.Name, expiresAt); dbErr != nil {
 			slog.Error("failed to save API token", "error", dbErr)
 		}
 

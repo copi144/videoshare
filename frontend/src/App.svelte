@@ -12,6 +12,8 @@
   let sharePassword: string | null = null;
   let shareLinkId: string | null = null;
   let shareLinkPassword: string | null = null;
+  let initialCategory: string | null = null;
+  let initialPlaylist: string | null = null;
 
   function handleShareSuccess(id: string, password?: string) {
     shareId = id;
@@ -19,7 +21,6 @@
     view = 'watch';
   }
 
-  // Extract share ID from hash and navigate to share/watch view
   function handleHashChange() {
     // /#/v/{hash}/{password} — video share
     const videoMatch = window.location.hash.match(/^#\/([vai])\/([^/]+?)(?:\/([a-f0-9]+))?(?:\/watch)?\/?$/);
@@ -27,6 +28,8 @@
       shareId = videoMatch[2];
       sharePassword = videoMatch[3] || null;
       view = 'share';
+      initialCategory = null;
+      initialPlaylist = null;
       return;
     }
     // /#/s/{id}/{password} — category/playlist share
@@ -35,17 +38,37 @@
       shareLinkId = shareLinkMatch[1];
       shareLinkPassword = shareLinkMatch[2];
       view = 'share-link';
+      initialCategory = null;
+      initialPlaylist = null;
+      return;
+    }
+    // /#/c/{name} — navigate to browse with category filter
+    const catMatch = window.location.hash.match(/^#\/c\/([^/]+?)\/?$/);
+    if (catMatch) {
+      initialCategory = catMatch[1];
+      initialPlaylist = null;
+      view = 'admin';
+      return;
+    }
+    // /#/l/{category}/{name} — navigate to browse with playlist filter
+    const plMatch = window.location.hash.match(/^#\/l\/([^/]+)\/([^/]+?)\/?$/);
+    if (plMatch) {
+      initialPlaylist = plMatch[1] + ':' + plMatch[2]; // composite "category:name"
+      initialCategory = null;
+      view = 'admin';
       return;
     }
     // Default: show MainApp
+    initialCategory = null;
+    initialPlaylist = null;
     view = 'admin';
   }
 
   onMount(async () => {
-    // Check if this is a share URL — video share
     const videoMatch = window.location.hash.match(/^#\/([vai])\/([^/]+?)(?:\/([a-f0-9]+))?(?:\/watch)?\/?$/);
-    // Check if this is a category/playlist share URL
     const shareLinkMatch = window.location.hash.match(/^#\/s\/([a-f0-9]+)\/([a-f0-9]+)\/?$/);
+    const catMatch = window.location.hash.match(/^#\/c\/([^/]+?)\/?$/);
+    const plMatch = window.location.hash.match(/^#\/l\/([^/]+)\/([^/]+?)\/?$/);
 
     if (videoMatch) {
       shareId = videoMatch[2];
@@ -55,6 +78,12 @@
       shareLinkId = shareLinkMatch[1];
       shareLinkPassword = shareLinkMatch[2];
       view = 'share-link';
+    } else if (catMatch) {
+      initialCategory = catMatch[1];
+      view = 'admin';
+    } else if (plMatch) {
+      initialPlaylist = plMatch[1] + ':' + plMatch[2];
+      view = 'admin';
     } else {
       view = 'admin';
     }
@@ -64,7 +93,6 @@
       history.replaceState(null, '', '/');
     }
 
-    // Listen for hash changes (internal navigation via links)
     window.addEventListener('hashchange', handleHashChange);
   });
 
@@ -75,7 +103,7 @@
 
 <main class="mx-auto px-4 sm:px-6">
   {#if view === 'admin'}
-    <MainApp />
+    <MainApp {initialCategory} {initialPlaylist} />
   {:else if view === 'share' && shareId}
     <Share id={shareId} password={sharePassword || ''} onSuccess={handleShareSuccess} />
   {:else if view === 'watch' && shareId}

@@ -17,7 +17,7 @@
     uploaded_by: string;
     uploaded_username: string;
     filename?: string;
-    category_name: string;
+    categories?: string[];
     transcode_status?: string;
     banned?: boolean;
   }
@@ -253,7 +253,17 @@
         {#each resources as res}
           <tr class="border-b border-gray-100">
             <td class="py-2 pr-4">{res.title}</td>
-            <td class="py-2 pr-4 text-gray-500">{res.category_name}</td>
+            <td class="py-2 pr-4">
+              {#if res.categories && res.categories.length > 0}
+                <div class="flex flex-wrap gap-1">
+                  {#each res.categories as cat}
+                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{cat}</span>
+                  {/each}
+                </div>
+              {:else}
+                <span class="text-gray-500">&mdash;</span>
+              {/if}
+            </td>
             <td class="py-2 pr-4">
               {#if res.banned}
                 <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Banned</span>

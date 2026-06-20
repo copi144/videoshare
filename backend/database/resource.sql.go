@@ -7,8 +7,21 @@ package database
 
 import (
 	"context"
-	"database/sql"
 )
+
+const addResourceCategory = `-- name: AddResourceCategory :exec
+INSERT INTO resource_categories (resource_id, category_name) VALUES (?, ?)
+`
+
+type AddResourceCategoryParams struct {
+	ResourceID   string
+	CategoryName string
+}
+
+func (q *Queries) AddResourceCategory(ctx context.Context, arg AddResourceCategoryParams) error {
+	_, err := q.db.ExecContext(ctx, addResourceCategory, arg.ResourceID, arg.CategoryName)
+	return err
+}
 
 const countResources = `-- name: CountResources :one
 SELECT COUNT(*) FROM resources
@@ -16,6 +29,17 @@ SELECT COUNT(*) FROM resources
 
 func (q *Queries) CountResources(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countResources)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countResourcesByCategory = `-- name: CountResourcesByCategory :one
+SELECT COUNT(*) FROM resource_categories WHERE category_name = ?
+`
+
+func (q *Queries) CountResourcesByCategory(ctx context.Context, categoryName string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countResourcesByCategory, categoryName)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -36,7 +60,7 @@ const countResourcesByUploader = `-- name: CountResourcesByUploader :one
 SELECT COUNT(*) FROM resources WHERE uploaded_by = ?
 `
 
-func (q *Queries) CountResourcesByUploader(ctx context.Context, uploadedBy sql.NullString) (int64, error) {
+func (q *Queries) CountResourcesByUploader(ctx context.Context, uploadedBy string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countResourcesByUploader, uploadedBy)
 	var count int64
 	err := row.Scan(&count)
@@ -44,7 +68,7 @@ func (q *Queries) CountResourcesByUploader(ctx context.Context, uploadedBy sql.N
 }
 
 const createResource = `-- name: CreateResource :exec
-INSERT INTO resources (id, title, filename, file_size, content_type, resource_type, uploaded_by, category_name, no_transcode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO resources (id, title, filename, file_size, content_type, resource_type, uploaded_by, no_transcode) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateResourceParams struct {
@@ -54,8 +78,7 @@ type CreateResourceParams struct {
 	FileSize     int64
 	ContentType  string
 	ResourceType string
-	UploadedBy   sql.NullString
-	CategoryName sql.NullString
+	UploadedBy   string
 	NoTranscode  int64
 }
 
@@ -68,7 +91,6 @@ func (q *Queries) CreateResource(ctx context.Context, arg CreateResourceParams) 
 		arg.ContentType,
 		arg.ResourceType,
 		arg.UploadedBy,
-		arg.CategoryName,
 		arg.NoTranscode,
 	)
 	return err
@@ -84,7 +106,7 @@ func (q *Queries) DeleteResource(ctx context.Context, id string) error {
 }
 
 const getResource = `-- name: GetResource :one
-SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE id = ?
+SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE id = ?
 `
 
 func (q *Queries) GetResource(ctx context.Context, id string) (Resource, error) {
@@ -99,7 +121,6 @@ func (q *Queries) GetResource(ctx context.Context, id string) (Resource, error) 
 		&i.ResourceType,
 		&i.Views,
 		&i.UploadedBy,
-		&i.CategoryName,
 		&i.TranscodeStatus,
 		&i.Banned,
 		&i.NoTranscode,
@@ -107,6 +128,17 @@ func (q *Queries) GetResource(ctx context.Context, id string) (Resource, error) 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getResourceCategoryCount = `-- name: GetResourceCategoryCount :one
+SELECT COUNT(*) FROM resource_categories WHERE resource_id = ?
+`
+
+func (q *Queries) GetResourceCategoryCount(ctx context.Context, resourceID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getResourceCategoryCount, resourceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const incrementResourceViews = `-- name: IncrementResourceViews :exec
@@ -118,8 +150,35 @@ func (q *Queries) IncrementResourceViews(ctx context.Context, id string) error {
 	return err
 }
 
+const listResourceCategories = `-- name: ListResourceCategories :many
+SELECT category_name FROM resource_categories WHERE resource_id = ?
+`
+
+func (q *Queries) ListResourceCategories(ctx context.Context, resourceID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listResourceCategories, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var category_name string
+		if err := rows.Scan(&category_name); err != nil {
+			return nil, err
+		}
+		items = append(items, category_name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listResources = `-- name: ListResources :many
-SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, transcode_status, banned, no_transcode, created_at, updated_at FROM resources ORDER BY created_at DESC
+SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, transcode_status, banned, no_transcode, created_at, updated_at FROM resources ORDER BY created_at DESC
 `
 
 func (q *Queries) ListResources(ctx context.Context) ([]Resource, error) {
@@ -140,7 +199,53 @@ func (q *Queries) ListResources(ctx context.Context) ([]Resource, error) {
 			&i.ResourceType,
 			&i.Views,
 			&i.UploadedBy,
-			&i.CategoryName,
+			&i.TranscodeStatus,
+			&i.Banned,
+			&i.NoTranscode,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listResourcesByCategoryPaginated = `-- name: ListResourcesByCategoryPaginated :many
+SELECT r.id, r.title, r.filename, r.file_size, r.content_type, r.resource_type, r.views, r.uploaded_by, r.transcode_status, r.banned, r.no_transcode, r.created_at, r.updated_at FROM resources r JOIN resource_categories rc ON r.id = rc.resource_id WHERE rc.category_name = ? ORDER BY r.created_at DESC LIMIT ? OFFSET ?
+`
+
+type ListResourcesByCategoryPaginatedParams struct {
+	CategoryName string
+	Limit        int64
+	Offset       int64
+}
+
+func (q *Queries) ListResourcesByCategoryPaginated(ctx context.Context, arg ListResourcesByCategoryPaginatedParams) ([]Resource, error) {
+	rows, err := q.db.QueryContext(ctx, listResourcesByCategoryPaginated, arg.CategoryName, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Resource{}
+	for rows.Next() {
+		var i Resource
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Filename,
+			&i.FileSize,
+			&i.ContentType,
+			&i.ResourceType,
+			&i.Views,
+			&i.UploadedBy,
 			&i.TranscodeStatus,
 			&i.Banned,
 			&i.NoTranscode,
@@ -161,7 +266,7 @@ func (q *Queries) ListResources(ctx context.Context) ([]Resource, error) {
 }
 
 const listResourcesByTranscodeStatus = `-- name: ListResourcesByTranscodeStatus :many
-SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE transcode_status = ? ORDER BY created_at DESC
+SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE transcode_status = ? ORDER BY created_at DESC
 `
 
 func (q *Queries) ListResourcesByTranscodeStatus(ctx context.Context, transcodeStatus string) ([]Resource, error) {
@@ -182,7 +287,6 @@ func (q *Queries) ListResourcesByTranscodeStatus(ctx context.Context, transcodeS
 			&i.ResourceType,
 			&i.Views,
 			&i.UploadedBy,
-			&i.CategoryName,
 			&i.TranscodeStatus,
 			&i.Banned,
 			&i.NoTranscode,
@@ -203,7 +307,7 @@ func (q *Queries) ListResourcesByTranscodeStatus(ctx context.Context, transcodeS
 }
 
 const listResourcesByTypePaginated = `-- name: ListResourcesByTypePaginated :many
-SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE resource_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
+SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE resource_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type ListResourcesByTypePaginatedParams struct {
@@ -230,7 +334,6 @@ func (q *Queries) ListResourcesByTypePaginated(ctx context.Context, arg ListReso
 			&i.ResourceType,
 			&i.Views,
 			&i.UploadedBy,
-			&i.CategoryName,
 			&i.TranscodeStatus,
 			&i.Banned,
 			&i.NoTranscode,
@@ -251,10 +354,10 @@ func (q *Queries) ListResourcesByTypePaginated(ctx context.Context, arg ListReso
 }
 
 const listResourcesByUploader = `-- name: ListResourcesByUploader :many
-SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE uploaded_by = ? ORDER BY created_at DESC
+SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE uploaded_by = ? ORDER BY created_at DESC
 `
 
-func (q *Queries) ListResourcesByUploader(ctx context.Context, uploadedBy sql.NullString) ([]Resource, error) {
+func (q *Queries) ListResourcesByUploader(ctx context.Context, uploadedBy string) ([]Resource, error) {
 	rows, err := q.db.QueryContext(ctx, listResourcesByUploader, uploadedBy)
 	if err != nil {
 		return nil, err
@@ -272,7 +375,6 @@ func (q *Queries) ListResourcesByUploader(ctx context.Context, uploadedBy sql.Nu
 			&i.ResourceType,
 			&i.Views,
 			&i.UploadedBy,
-			&i.CategoryName,
 			&i.TranscodeStatus,
 			&i.Banned,
 			&i.NoTranscode,
@@ -293,11 +395,11 @@ func (q *Queries) ListResourcesByUploader(ctx context.Context, uploadedBy sql.Nu
 }
 
 const listResourcesByUploaderPaginated = `-- name: ListResourcesByUploaderPaginated :many
-SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE uploaded_by = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
+SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, transcode_status, banned, no_transcode, created_at, updated_at FROM resources WHERE uploaded_by = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type ListResourcesByUploaderPaginatedParams struct {
-	UploadedBy sql.NullString
+	UploadedBy string
 	Limit      int64
 	Offset     int64
 }
@@ -320,7 +422,6 @@ func (q *Queries) ListResourcesByUploaderPaginated(ctx context.Context, arg List
 			&i.ResourceType,
 			&i.Views,
 			&i.UploadedBy,
-			&i.CategoryName,
 			&i.TranscodeStatus,
 			&i.Banned,
 			&i.NoTranscode,
@@ -341,7 +442,7 @@ func (q *Queries) ListResourcesByUploaderPaginated(ctx context.Context, arg List
 }
 
 const listResourcesPaginated = `-- name: ListResourcesPaginated :many
-SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, transcode_status, banned, no_transcode, created_at, updated_at FROM resources ORDER BY created_at DESC LIMIT ? OFFSET ?
+SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, transcode_status, banned, no_transcode, created_at, updated_at FROM resources ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type ListResourcesPaginatedParams struct {
@@ -367,7 +468,6 @@ func (q *Queries) ListResourcesPaginated(ctx context.Context, arg ListResourcesP
 			&i.ResourceType,
 			&i.Views,
 			&i.UploadedBy,
-			&i.CategoryName,
 			&i.TranscodeStatus,
 			&i.Banned,
 			&i.NoTranscode,
@@ -385,6 +485,29 @@ func (q *Queries) ListResourcesPaginated(ctx context.Context, arg ListResourcesP
 		return nil, err
 	}
 	return items, nil
+}
+
+const removeAllResourceCategories = `-- name: RemoveAllResourceCategories :exec
+DELETE FROM resource_categories WHERE resource_id = ?
+`
+
+func (q *Queries) RemoveAllResourceCategories(ctx context.Context, resourceID string) error {
+	_, err := q.db.ExecContext(ctx, removeAllResourceCategories, resourceID)
+	return err
+}
+
+const removeResourceFromCategory = `-- name: RemoveResourceFromCategory :exec
+DELETE FROM resource_categories WHERE resource_id = ? AND category_name = ?
+`
+
+type RemoveResourceFromCategoryParams struct {
+	ResourceID   string
+	CategoryName string
+}
+
+func (q *Queries) RemoveResourceFromCategory(ctx context.Context, arg RemoveResourceFromCategoryParams) error {
+	_, err := q.db.ExecContext(ctx, removeResourceFromCategory, arg.ResourceID, arg.CategoryName)
+	return err
 }
 
 const updateResourceBanned = `-- name: UpdateResourceBanned :exec

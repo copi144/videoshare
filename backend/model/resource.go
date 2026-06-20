@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"videoshare/database"
@@ -19,7 +20,7 @@ type Resource struct {
 	ResourceType    string    `json:"resource_type"`
 	Views           int       `json:"views"`
 	UploadedBy      string    `json:"uploaded_by"`
-	CategoryName    string    `json:"category_name"`
+	Categories      []string  `json:"categories,omitempty"` // populated via join table when requested
 	TranscodeStatus string    `json:"transcode_status"`
 	Banned          bool      `json:"banned"`
 	NoTranscode     bool      `json:"no_transcode"`
@@ -52,8 +53,7 @@ func (s *ResourceStore) Insert(r *Resource) error {
 		FileSize:     r.FileSize,
 		ContentType:  r.ContentType,
 		ResourceType: r.ResourceType,
-		UploadedBy:   sql.NullString{String: r.UploadedBy, Valid: r.UploadedBy != ""},
-		CategoryName: sql.NullString{String: r.CategoryName, Valid: r.CategoryName != ""},
+		UploadedBy:   r.UploadedBy,
 		NoTranscode:  noTranscode,
 	})
 }
@@ -73,8 +73,7 @@ func (s *ResourceStore) GetByID(id string) (*Resource, error) {
 		ContentType:     r.ContentType,
 		ResourceType:    r.ResourceType,
 		Views:           int(r.Views),
-		UploadedBy:      r.UploadedBy.String,
-		CategoryName:    r.CategoryName.String,
+		UploadedBy:      r.UploadedBy,
 		TranscodeStatus: r.TranscodeStatus,
 		Banned:          r.Banned != 0,
 		NoTranscode:     r.NoTranscode != 0,
@@ -100,8 +99,7 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
-			UploadedBy:      r.UploadedBy.String,
-			CategoryName:    r.CategoryName.String,
+			UploadedBy:      r.UploadedBy,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -115,7 +113,7 @@ func (s *ResourceStore) List() ([]*Resource, error) {
 // ListByUploader returns all resources uploaded by a specific user, ordered by creation date descending.
 func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
 	ctx := context.Background()
-	items, err := s.q.ListResourcesByUploader(ctx, sql.NullString{String: userID, Valid: userID != ""})
+	items, err := s.q.ListResourcesByUploader(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +127,7 @@ func (s *ResourceStore) ListByUploader(userID string) ([]*Resource, error) {
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
-			UploadedBy:      r.UploadedBy.String,
-			CategoryName:    r.CategoryName.String,
+			UploadedBy:      r.UploadedBy,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -161,8 +158,7 @@ func (s *ResourceStore) ListPaginated(limit, offset int) ([]*Resource, error) {
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
-			UploadedBy:      r.UploadedBy.String,
-			CategoryName:    r.CategoryName.String,
+			UploadedBy:      r.UploadedBy,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -184,7 +180,7 @@ func (s *ResourceStore) Count() (int, error) {
 func (s *ResourceStore) ListByUploaderPaginated(userID string, limit, offset int) ([]*Resource, error) {
 	ctx := context.Background()
 	items, err := s.q.ListResourcesByUploaderPaginated(ctx, database.ListResourcesByUploaderPaginatedParams{
-		UploadedBy: sql.NullString{String: userID, Valid: userID != ""},
+		UploadedBy: userID,
 		Limit:      int64(limit),
 		Offset:     int64(offset),
 	})
@@ -201,8 +197,7 @@ func (s *ResourceStore) ListByUploaderPaginated(userID string, limit, offset int
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
-			UploadedBy:      r.UploadedBy.String,
-			CategoryName:    r.CategoryName.String,
+			UploadedBy:      r.UploadedBy,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -216,13 +211,17 @@ func (s *ResourceStore) ListByUploaderPaginated(userID string, limit, offset int
 // CountByUploader returns the total number of resources uploaded by a specific user.
 func (s *ResourceStore) CountByUploader(userID string) (int, error) {
 	ctx := context.Background()
-	count, err := s.q.CountResourcesByUploader(ctx, sql.NullString{String: userID, Valid: userID != ""})
+	count, err := s.q.CountResourcesByUploader(ctx, userID)
 	return int(count), err
 }
 
 // Delete removes a resource by its ID.
 func (s *ResourceStore) Delete(id string) error {
 	ctx := context.Background()
+	// Clean up resource_categories first.
+	if _, err := s.db.Exec("DELETE FROM resource_categories WHERE resource_id = ?", id); err != nil {
+		return fmt.Errorf("cleanup resource categories: %w", err)
+	}
 	return s.q.DeleteResource(ctx, id)
 }
 
@@ -236,6 +235,11 @@ func (s *ResourceStore) DeleteWithFile(id string, fileCleanup func() error) erro
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
+
+	// Clean up resource_categories within the transaction.
+	if _, err := tx.Exec("DELETE FROM resource_categories WHERE resource_id = ?", id); err != nil {
+		return fmt.Errorf("cleanup resource categories: %w", err)
+	}
 
 	qtx := s.q.WithTx(tx)
 	if err := qtx.DeleteResource(ctx, id); err != nil {
@@ -290,8 +294,7 @@ func (s *ResourceStore) ListByTranscodeStatus(status string) ([]*Resource, error
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
-			UploadedBy:      r.UploadedBy.String,
-			CategoryName:    r.CategoryName.String,
+			UploadedBy:      r.UploadedBy,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -329,8 +332,7 @@ func (s *ResourceStore) ListByTypePaginated(resourceType string, limit, offset i
 			ContentType:     r.ContentType,
 			ResourceType:    r.ResourceType,
 			Views:           int(r.Views),
-			UploadedBy:      r.UploadedBy.String,
-			CategoryName:    r.CategoryName.String,
+			UploadedBy:      r.UploadedBy,
 			TranscodeStatus: r.TranscodeStatus,
 			Banned:          r.Banned != 0,
 			NoTranscode:     r.NoTranscode != 0,
@@ -351,7 +353,7 @@ func (s *ResourceStore) CountByType(resourceType string) (int, error) {
 // ListByTypeAndUploaderPaginated returns a page of resources with the given type and uploader.
 func (s *ResourceStore) ListByTypeAndUploaderPaginated(resourceType, uploaderID string, limit, offset int) ([]*Resource, error) {
 	rows, err := s.db.Query(
-		`SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, category_name, no_transcode, transcode_status, banned, created_at, updated_at
+		`SELECT id, title, filename, file_size, content_type, resource_type, views, uploaded_by, no_transcode, transcode_status, banned, created_at, updated_at
 		 FROM resources WHERE resource_type = ? AND uploaded_by = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		resourceType, uploaderID, limit, offset,
 	)
@@ -363,11 +365,11 @@ func (s *ResourceStore) ListByTypeAndUploaderPaginated(resourceType, uploaderID 
 	var resources []*Resource
 	for rows.Next() {
 		r := &Resource{}
-		var filename, contentType, uploadedBy, categoryName, transcodeStatus string
+		var filename, contentType, uploadedBy, transcodeStatus string
 		var fileSize, views, noTranscode int64
 		var banned int64
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&r.ID, &r.Title, &filename, &fileSize, &contentType, &r.ResourceType, &views, &uploadedBy, &categoryName, &noTranscode, &transcodeStatus, &banned, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &filename, &fileSize, &contentType, &r.ResourceType, &views, &uploadedBy, &noTranscode, &transcodeStatus, &banned, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		r.Filename = filename
@@ -375,7 +377,6 @@ func (s *ResourceStore) ListByTypeAndUploaderPaginated(resourceType, uploaderID 
 		r.ContentType = contentType
 		r.Views = int(views)
 		r.UploadedBy = uploadedBy
-		r.CategoryName = categoryName
 		r.NoTranscode = noTranscode != 0
 		r.TranscodeStatus = transcodeStatus
 		r.Banned = banned != 0
@@ -391,4 +392,179 @@ func (s *ResourceStore) CountByTypeAndUploader(resourceType, uploaderID string) 
 	var count int
 	err := s.db.QueryRow("SELECT COUNT(*) FROM resources WHERE resource_type = ? AND uploaded_by = ?", resourceType, uploaderID).Scan(&count)
 	return count, err
+}
+
+// AddResourceCategory adds a category assignment to a resource (idempotent).
+func (s *ResourceStore) AddResourceCategory(resourceID, categoryName string) error {
+	ctx := context.Background()
+	return s.q.AddResourceCategory(ctx, database.AddResourceCategoryParams{
+		ResourceID:   resourceID,
+		CategoryName: categoryName,
+	})
+}
+
+// RemoveResourceFromCategory removes one category assignment from a resource.
+func (s *ResourceStore) RemoveResourceFromCategory(resourceID, categoryName string) error {
+	ctx := context.Background()
+	return s.q.RemoveResourceFromCategory(ctx, database.RemoveResourceFromCategoryParams{
+		ResourceID:   resourceID,
+		CategoryName: categoryName,
+	})
+}
+
+// RemoveAllResourceCategories removes all category assignments for a resource.
+func (s *ResourceStore) RemoveAllResourceCategories(resourceID string) error {
+	ctx := context.Background()
+	return s.q.RemoveAllResourceCategories(ctx, resourceID)
+}
+
+// GetResourceCategoriesCount returns how many categories a resource belongs to.
+func (s *ResourceStore) GetResourceCategoriesCount(resourceID string) (int, error) {
+	ctx := context.Background()
+	count, err := s.q.GetResourceCategoryCount(ctx, resourceID)
+	return int(count), err
+}
+
+// GetResourceCategories returns the list of category names a resource belongs to.
+func (s *ResourceStore) GetResourceCategories(resourceID string) ([]string, error) {
+	ctx := context.Background()
+	return s.q.ListResourceCategories(ctx, resourceID)
+}
+
+// ListByCategoryPaginated returns a page of resources in a specific category (admin view).
+func (s *ResourceStore) ListByCategoryPaginated(categoryName string, limit, offset int) ([]*Resource, error) {
+	ctx := context.Background()
+	items, err := s.q.ListResourcesByCategoryPaginated(ctx, database.ListResourcesByCategoryPaginatedParams{
+		CategoryName: categoryName,
+		Limit:        int64(limit),
+		Offset:       int64(offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resources := make([]*Resource, 0, len(items))
+	for _, r := range items {
+		resources = append(resources, &Resource{
+			ID:              r.ID,
+			Title:           r.Title,
+			Filename:        r.Filename,
+			FileSize:        r.FileSize,
+			ContentType:     r.ContentType,
+			ResourceType:    r.ResourceType,
+			Views:           int(r.Views),
+			UploadedBy:      r.UploadedBy,
+			TranscodeStatus: r.TranscodeStatus,
+			Banned:          r.Banned != 0,
+			NoTranscode:     r.NoTranscode != 0,
+			CreatedAt:       r.CreatedAt,
+			UpdatedAt:       r.UpdatedAt,
+		})
+	}
+	return resources, nil
+}
+
+// ListByCategoryAndUploaderPaginated returns resources in a category uploaded by a specific user.
+func (s *ResourceStore) ListByCategoryAndUploaderPaginated(categoryName, uploaderID string, limit, offset int) ([]*Resource, error) {
+	rows, err := s.db.Query(`
+		SELECT r.id, r.title, r.filename, r.file_size, r.content_type, r.resource_type,
+		       r.views, r.uploaded_by, r.no_transcode,
+		       r.transcode_status, r.banned, r.created_at, r.updated_at
+		FROM resources r
+		JOIN resource_categories rc ON r.id = rc.resource_id
+		WHERE rc.category_name = ? AND r.uploaded_by = ?
+		ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
+		categoryName, uploaderID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanResources(rows)
+}
+
+// CountByCategory returns the total number of resources in a category.
+func (s *ResourceStore) CountByCategory(categoryName string) (int, error) {
+	ctx := context.Background()
+	count, err := s.q.CountResourcesByCategory(ctx, categoryName)
+	return int(count), err
+}
+
+// CountByCategoryAndUploader returns the count of resources a user has in a category.
+func (s *ResourceStore) CountByCategoryAndUploader(categoryName, uploaderID string) (int, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM resource_categories rc
+		 JOIN resources r ON r.id = rc.resource_id
+		 WHERE rc.category_name = ? AND r.uploaded_by = ?`,
+		categoryName, uploaderID,
+	).Scan(&count)
+	return count, err
+}
+
+// scanResources scans SQL rows into a slice of Resource pointers.
+func scanResources(rows *sql.Rows) ([]*Resource, error) {
+	var resources []*Resource
+	for rows.Next() {
+		r := &Resource{}
+		var filename, contentType, uploadedBy, transcodeStatus string
+		var fileSize, views, noTranscode int64
+		var banned int64
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&r.ID, &r.Title, &filename, &fileSize, &contentType, &r.ResourceType, &views, &uploadedBy, &noTranscode, &transcodeStatus, &banned, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		r.Filename = filename
+		r.FileSize = fileSize
+		r.ContentType = contentType
+		r.Views = int(views)
+		r.UploadedBy = uploadedBy
+		r.NoTranscode = noTranscode != 0
+		r.TranscodeStatus = transcodeStatus
+		r.Banned = banned != 0
+		r.CreatedAt = createdAt
+		r.UpdatedAt = updatedAt
+		resources = append(resources, r)
+	}
+	return resources, rows.Err()
+}
+
+// EnrichWithCategories populates the Categories field on the given resources
+// by querying the resource_categories join table in bulk.
+func (s *ResourceStore) EnrichWithCategories(resources []*Resource) error {
+	if len(resources) == 0 {
+		return nil
+	}
+	ids := make([]string, len(resources))
+	for i, r := range resources {
+		ids[i] = r.ID
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := "SELECT resource_id, category_name FROM resource_categories WHERE resource_id IN (" + strings.Join(placeholders, ",") + ")"
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	catMap := make(map[string][]string)
+	for rows.Next() {
+		var resID, catName string
+		if err := rows.Scan(&resID, &catName); err != nil {
+			return err
+		}
+		catMap[resID] = append(catMap[resID], catName)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, r := range resources {
+		if cats, ok := catMap[r.ID]; ok {
+			r.Categories = cats
+		}
+	}
+	return nil
 }
