@@ -5,7 +5,7 @@ A self-contained media sharing platform — video, audio, and image — packaged
 ## Features
 
 - **Single binary deployment** — CGO_ENABLED=0 static build. One file, nothing else to install.
-- **Multi-user system** — Two roles: `admin` (full control) and `uploader` (upload and delete own media only).
+- **Multi-user system** — Admins have full control. Regular users can be assigned to categories with per-user upload permission toggles.
 - **TOTP authentication** — No passwords. Login via authenticator app (Google Authenticator, Authy, etc.).
 - **Session & token auth** — Session cookie for streaming, Bearer token for API access.
 - **Video, audio, and image support** — All media types in one unified system.
@@ -18,6 +18,8 @@ A self-contained media sharing platform — video, audio, and image — packaged
 - **Rate limiting** — 60 requests/minute per IP.
 - **Readme support** — Markdown descriptions per resource.
 - **In-memory view guard** — Accurate view counting without duplication.
+
+> 📖 **Database schema**: See [`docs/database.md`](docs/database.md) for the full database structure.
 
 ## Quick Start
 
@@ -112,11 +114,10 @@ All configuration is via environment variables:
 |------|-------------|
 | `/#/login` | Login page (TOTP auth) |
 | `/#/v/{hash}` | Video/audio/image watch page |
-| `/#/v/{hash}/watch` | Watch page (after authentication) |
-| `/#/admin` | Admin dashboard (manage users, categories, playlists) |
-| `/#/admin/users` | User management (admin only) |
-| `/#/admin/categories` | Category management (admin only) |
-| `/#/admin/playlists` | Playlist management (admin only) |
+| `/#/v/{hash}/watch` | Watch page (after auth) |
+| `/#/c/{name}` | Browse by category |
+| `/#/l/{category}/{name}` | Browse by playlist |
+| `/#/admin` | Admin dashboard (resources, users, categories, playlists) |
 
 ### Direct Access Routes
 
@@ -159,7 +160,7 @@ All configuration is via environment variables:
 |--------|------|------|-------------|
 | GET | `/api/resources` | Bearer | List resources (paginated: `?limit=&offset=`) |
 | GET | `/api/resources/{id}` | Bearer | Resource detail |
-| POST | `/api/upload` | Bearer | Upload media (multipart: `file`, `title`, `description`, `password`, `category_id`) |
+| POST | `/api/upload` | Bearer | Upload media (multipart: `file`, `title`, `description`, `password`, `category_name`) |
 | DELETE | `/api/resources/{id}` | Bearer | Delete resource (uploaders can only delete their own) |
 
 ### Users
@@ -168,31 +169,29 @@ All configuration is via environment variables:
 |--------|------|------|-------------|
 | GET | `/api/me` | Bearer | Current user info |
 | GET | `/api/users` | Admin | List users |
-| POST | `/api/users` | Admin | Create user (body: `username`, `role`) |
+| POST | `/api/users` | Admin | Create user (body: `name`, `display_name`, `is_admin`) |
 
 ### Categories
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/categories` | Bearer | List categories (paginated) |
-| POST | `/api/categories` | Admin | Create category |
+| POST | `/api/categories` | Admin | Create category (body: `name`, `display_name`, `description`) |
 | PUT | `/api/categories/{id}` | Admin | Update category |
 | DELETE | `/api/categories/{id}` | Admin | Delete category |
-| GET | `/api/categories/{id}/uploaders` | Admin | List assigned uploaders |
-| POST | `/api/categories/{id}/uploaders` | Admin | Assign uploaders to category |
-| DELETE | `/api/categories/{id}/uploaders/{userId}` | Admin | Remove uploader from category |
+| GET | `/api/categories/{id}/uploaders` | Admin | List category members with can_upload status |
+| POST | `/api/categories/{id}/uploaders` | Admin | Assign members (body: `{"members": [{"name": "...", "can_upload": true}]}`) |
 
 ### Playlists
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/playlists` | Bearer | List playlists (paginated) |
-| POST | `/api/playlists` | Admin | Create playlist |
-| PUT | `/api/playlists/{id}` | Admin | Update playlist |
-| DELETE | `/api/playlists/{id}` | Admin | Delete playlist |
-| GET | `/api/playlists/{id}/resources` | Bearer | List resources in playlist |
-| POST | `/api/playlists/{id}/resources` | Admin | Add resource to playlist |
-| DELETE | `/api/playlists/{id}/resources/{resourceId}` | Admin | Remove resource from playlist |
+| POST | `/api/playlists` | Admin | Create playlist (body: `name`, `category_name`, `display_name`, `description`) |
+| GET | `/api/playlists?limit=&offset=&category_name=&playlist_type=` | Bearer | List playlists (paginated, filterable) |
+| DELETE | `/api/playlists/{name}?category_name=` | Admin | Delete playlist |
+| GET | `/api/playlists/{name}/resources?category_name=` | Bearer | List resources in playlist |
+| POST | `/api/playlists/{name}/resources?category_name=` | Admin | Add resource to playlist (body: `resource_id`) |
+| DELETE | `/api/playlists/{name}/resources/{resourceId}?category_name=` | Admin | Remove resource from playlist |
 
 ### Health
 
