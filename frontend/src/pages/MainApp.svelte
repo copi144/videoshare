@@ -220,6 +220,7 @@
         const data = await getShareLinkResources(shareLinkId, shareLinkPassword);
         resources = data.resources || [];
         total = resources.length;
+        loading = false;
         return;
       }
       const params: { limit: number; offset: number; category_name?: string; resource_type?: string } = { limit, offset };
@@ -701,20 +702,6 @@
 
       {#if activeTab === 'browse'}
         <div class="rounded-lg border border-gray-200 bg-white p-4 mb-4">
-          {#if sharedMode}
-            <div class="rounded-lg border border-indigo-200 bg-indigo-50 p-4 mb-4">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-indigo-600 font-medium">
-                    Browsing shared {shareTargetType}: {shareTargetName}
-                  </p>
-                  <p class="text-xs text-indigo-500 mt-1">
-                    {resources.length} file{resources.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-            </div>
-          {/if}
           <!-- Action bar -->
           <div class="action-bar">
           <div class="action-bar-left">

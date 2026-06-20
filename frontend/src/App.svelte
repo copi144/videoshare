@@ -7,7 +7,7 @@
 
   type View = 'admin' | 'share' | 'watch' | 'share-link';
 
-  let view: View = 'admin';
+  let view: View | null = null;
   let shareId: string | null = null;
   let sharePassword: string | null = null;
   let shareLinkId: string | null = null;
@@ -110,6 +110,8 @@
     <Watch id={shareId} />
   {:else if view === 'share-link' && shareLinkId && shareLinkPassword}
     <ShareLink id={shareLinkId} password={shareLinkPassword} />
+  {:else if view === null}
+    <!-- nothing rendered, waiting for onMount -->
   {/if}
 </main>
 
