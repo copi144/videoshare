@@ -102,7 +102,6 @@ CREATE TABLE share_links (
     password TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_id TEXT NOT NULL,
-    target_category TEXT NOT NULL DEFAULT '',
     expires_at DATETIME,
     created_by TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

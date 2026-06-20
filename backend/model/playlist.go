@@ -45,6 +45,25 @@ func (s *PlaylistStore) Insert(p *Playlist) error {
 	})
 }
 
+// GetByNameOnly looks up a playlist by name across all categories (returns first match).
+func (s *PlaylistStore) GetByNameOnly(name string) (*Playlist, error) {
+	ctx := context.Background()
+	row := s.db.QueryRowContext(ctx,
+		`SELECT category_name, name, playlist_type, display_name, description, created_by, sort_order, created_at FROM playlists WHERE name = ? LIMIT 1`,
+		name,
+	)
+	var p Playlist
+	var sortOrder int64
+	var playlistType sql.NullString
+	err := row.Scan(&p.CategoryName, &p.Name, &playlistType, &p.DisplayName, &p.Description, &p.CreatedBy, &sortOrder, &p.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	p.PlaylistType = playlistType.String
+	p.SortOrder = int(sortOrder)
+	return &p, nil
+}
+
 // GetByName retrieves a playlist by category name and playlist name.
 func (s *PlaylistStore) GetByName(categoryName, name string) (*Playlist, error) {
 	ctx := context.Background()

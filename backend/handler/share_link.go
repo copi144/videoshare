@@ -36,7 +36,6 @@ func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		TargetType       string `json:"target_type"`
 		TargetID         string `json:"target_id"`
-		TargetCategory   string `json:"target_category"`
 		ExpiresInMinutes int    `json:"expires_in_minutes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -63,7 +62,7 @@ func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		if _, err := h.playlistStore.GetByName(req.TargetCategory, req.TargetID); err != nil {
+		if _, err := h.playlistStore.GetByNameOnly(req.TargetID); err != nil {
 			respondJSONError(w, "Playlist not found", http.StatusNotFound)
 			return
 		}
@@ -87,15 +86,14 @@ func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	link := &model.ShareLink{
-		ID:             id,
-		Password:       password,
-		TargetType:     req.TargetType,
-		TargetID:       req.TargetID,
-		TargetCategory: req.TargetCategory,
-		ExpiresAt:      &t,
-		CreatedBy:      userID,
-		CreatedAt:      now,
+		ID:        id,
+		Password:  password,
+		TargetType: req.TargetType,
+		ExpiresAt: &t,
+		CreatedBy: userID,
+		CreatedAt: now,
 	}
+	link.TargetID = req.TargetID
 
 	if err := h.store.Create(link); err != nil {
 		slog.Error("failed to create share link", "error", err)
@@ -298,13 +296,13 @@ func (h *ShareLinkHandler) GetSharedResourcesAPI(w http.ResponseWriter, r *http.
 	}
 
 	if link.TargetType == "playlist" {
-		playlist, err := h.playlistStore.GetByName(link.TargetCategory, link.TargetID)
+		playlist, err := h.playlistStore.GetByNameOnly(link.TargetID)
 		if err != nil {
 			slog.Error("playlist not found for share link", "playlist", link.TargetID, "error", err)
 			respondJSONError(w, "Target playlist not found", http.StatusNotFound)
 			return
 		}
-		videoIDs, err := h.playlistStore.ListVideos(link.TargetCategory, link.TargetID)
+		videoIDs, err := h.playlistStore.ListVideos(playlist.CategoryName, playlist.Name)
 		if err != nil {
 			slog.Error("failed to list playlist videos", "error", err)
 			respondJSONError(w, "Failed to list videos", http.StatusInternalServerError)

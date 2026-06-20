@@ -10,14 +10,13 @@ import (
 
 // ShareLink represents a share link for a category or playlist.
 type ShareLink struct {
-	ID             string     `json:"id"`
-	Password       string     `json:"-"`
-	TargetType     string     `json:"target_type"`
-	TargetID       string     `json:"target_id"`
-	TargetCategory string     `json:"target_category,omitempty"`
-	ExpiresAt      *time.Time `json:"expires_at"`
-	CreatedBy      string     `json:"created_by,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID         string     `json:"id"`
+	Password   string     `json:"-"`
+	TargetType string     `json:"target_type"`
+	TargetID   string     `json:"target_id"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	CreatedBy  string     `json:"created_by,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // ShareLinkStore provides CRUD operations for share_links (categories/playlists) with periodic cleanup.
@@ -69,8 +68,8 @@ func GenerateShareLinkID() (string, error) {
 // Create inserts a new share link.
 func (s *ShareLinkStore) Create(link *ShareLink) error {
 	_, err := s.db.Exec(
-		`INSERT INTO share_links (id, password, target_type, target_id, target_category, expires_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		link.ID, link.Password, link.TargetType, link.TargetID, link.TargetCategory, link.ExpiresAt, link.CreatedBy, link.CreatedAt,
+		`INSERT INTO share_links (id, password, target_type, target_id, expires_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		link.ID, link.Password, link.TargetType, link.TargetID, link.ExpiresAt, link.CreatedBy, link.CreatedAt,
 	)
 	return err
 }
@@ -78,12 +77,12 @@ func (s *ShareLinkStore) Create(link *ShareLink) error {
 // GetByID finds a valid (not expired) share link by ID.
 func (s *ShareLinkStore) GetByID(id string) (*ShareLink, error) {
 	row := s.db.QueryRow(
-		`SELECT id, password, target_type, target_id, target_category, expires_at, created_by, created_at FROM share_links WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)`,
+		`SELECT id, password, target_type, target_id, expires_at, created_by, created_at FROM share_links WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)`,
 		id, time.Now().UTC(),
 	)
 	link := &ShareLink{}
 	var expiresAt sql.NullTime
-	err := row.Scan(&link.ID, &link.Password, &link.TargetType, &link.TargetID, &link.TargetCategory, &expiresAt, &link.CreatedBy, &link.CreatedAt)
+	err := row.Scan(&link.ID, &link.Password, &link.TargetType, &link.TargetID, &expiresAt, &link.CreatedBy, &link.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +95,7 @@ func (s *ShareLinkStore) GetByID(id string) (*ShareLink, error) {
 // ListByTarget returns all non-expired share links for a target (category/playlist).
 func (s *ShareLinkStore) ListByTarget(targetType, targetID string) ([]*ShareLink, error) {
 	rows, err := s.db.Query(
-		`SELECT id, password, target_type, target_id, target_category, expires_at, created_by, created_at FROM share_links WHERE target_type = ? AND target_id = ? AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC`,
+		`SELECT id, password, target_type, target_id, expires_at, created_by, created_at FROM share_links WHERE target_type = ? AND target_id = ? AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC`,
 		targetType, targetID, time.Now().UTC(),
 	)
 	if err != nil {
@@ -108,7 +107,7 @@ func (s *ShareLinkStore) ListByTarget(targetType, targetID string) ([]*ShareLink
 	for rows.Next() {
 		link := &ShareLink{}
 		var expiresAt sql.NullTime
-		if err := rows.Scan(&link.ID, &link.Password, &link.TargetType, &link.TargetID, &link.TargetCategory, &expiresAt, &link.CreatedBy, &link.CreatedAt); err != nil {
+		if err := rows.Scan(&link.ID, &link.Password, &link.TargetType, &link.TargetID, &expiresAt, &link.CreatedBy, &link.CreatedAt); err != nil {
 			return nil, err
 		}
 		if expiresAt.Valid {
