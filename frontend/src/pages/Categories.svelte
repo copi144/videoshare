@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { listCategories, createCategory, deleteCategory, listUsers, getUploaders, assignUploaders } from '../lib/api';
+  import MarkdownEditor from '../components/MarkdownEditor.svelte';
 
   export let onError: ((msg: string) => void) | undefined = undefined;
 
@@ -22,6 +23,10 @@
   let formDisplayName = '';
   let formDescription = '';
   let loading = true;
+
+  // Name validation pattern
+  const namePattern = /^[0-9A-Za-z\-]*$/;
+  $: formNameValid = formName === '' || namePattern.test(formName);
 
   // Pagination
   let limit = 50;
@@ -200,20 +205,25 @@
   <!-- Create form -->
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-base font-semibold text-gray-900 mb-3">Create Category</h2>
-    <form on:submit|preventDefault={handleCreate} class="space-y-3">
-      <div>
-        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-        <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+    <form on:submit|preventDefault={handleCreate}>
+      <!-- Name + Display Name inline -->
+      <div class="flex gap-3 mb-3">
+        <div class="flex-1">
+          <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+          <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" class:border-red-500={formName !== '' && !formNameValid} />
+        </div>
+        <div class="flex-1">
+          <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+          <input type="text" id="display_name" bind:value={formDisplayName} class="w-full" />
+        </div>
       </div>
-      <div>
-        <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
-        <input type="text" id="display_name" bind:value={formDisplayName} class="w-full" />
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Description (Markdown)</label>
+        <MarkdownEditor bind:value={formDescription} placeholder="Optional markdown description..." />
       </div>
-      <div>
-        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-        <textarea id="description" name="description" bind:value={formDescription} class="w-full"></textarea>
+      <div class="flex justify-end">
+        <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
       </div>
-      <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
     </form>
   </div>
 </div>

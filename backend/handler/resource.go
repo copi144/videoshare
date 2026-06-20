@@ -71,6 +71,14 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, http.StatusBadRequest, "Category is required")
 		return
 	}
+	if title == "" {
+		respondError(w, r, http.StatusBadRequest, "Title is required")
+		return
+	}
+	if !model.IsValidName(title) {
+		respondError(w, r, http.StatusBadRequest, "Title must only contain letters, numbers, and hyphens")
+		return
+	}
 
 	userID := middleware.GetUserIDFromContext(r.Context())
 	isAdmin := middleware.GetIsAdminFromContext(r.Context())

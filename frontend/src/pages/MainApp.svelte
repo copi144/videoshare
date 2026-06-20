@@ -90,8 +90,9 @@
   // --- Category / Playlist filtering ---
 
   let selectedCategoryId: string = 'global';
-  let selectedPlaylistId: string | null = null;
+  let selectedPlaylistId: string | null = '';
   let selectedResourceType: 'all' | 'video' | 'audio' | 'image' = 'all';
+  let viewMode: 'list' | 'card' = 'list';
   let categories: Category[] = [];
   let playlists: Playlist[] = [];
 
@@ -116,6 +117,10 @@
   let uploadError: string | null = null;
   let uploading = false;
   let copySuccess: string | null = null;
+
+  // Name validation pattern
+  const namePattern = /^[0-9A-Za-z\-]*$/;
+  $: titleValid = uploadForm.title === '' || namePattern.test(uploadForm.title);
   
   // --- Create Link modal ---
   
@@ -176,7 +181,7 @@
     error = null;
     try {
       const params: { limit: number; offset: number; category_name?: string; playlist_id?: string; resource_type?: string } = { limit, offset };
-      if (selectedPlaylistId) {
+      if (selectedPlaylistId && selectedPlaylistId !== '') {
         params.playlist_id = selectedPlaylistId;
       } else if (selectedCategoryId) {
         params.category_name = selectedCategoryId;
@@ -237,14 +242,14 @@
   // --- Event handlers ---
 
   function onCategoryChange() {
-    selectedPlaylistId = null;
+    selectedPlaylistId = '';
     offset = 0;
     loadResources();
     loadPlaylists();
   }
 
   function onTypeChange() {
-    selectedPlaylistId = null;
+    selectedPlaylistId = '';
     offset = 0;
     loadResources();
     loadPlaylists();
@@ -602,8 +607,9 @@
       {/if}
 
       {#if activeTab === 'browse'}
-        <!-- Action bar -->
-        <div class="action-bar">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 mb-4">
+          <!-- Action bar -->
+          <div class="action-bar">
           <div class="action-bar-left">
             <select bind:value={selectedCategoryId} on:change={onCategoryChange}>
               {#each categories as cat}
@@ -612,8 +618,14 @@
                 </option>
               {/each}
             </select>
+            <select bind:value={selectedPlaylistId} on:change={() => { offset = 0; loadResources(); }}>
+              <option value="">All playlists</option>
+              {#each playlists as pl}
+                <option value={pl.id}>{pl.name}</option>
+              {/each}
+            </select>
             <select bind:value={selectedResourceType} on:change={onTypeChange}>
-              <option value="all">All</option>
+              <option value="all">All file types</option>
               <option value="video">Video</option>
               <option value="audio">Audio</option>
               <option value="image">Image</option>
@@ -633,6 +645,24 @@
                 Delete All
               </button>
             {/if}
+            <div class="inline-flex rounded-md shadow-sm">
+              <button
+                type="button"
+                class="view-toggle-btn {viewMode === 'list' ? 'view-toggle-active' : ''}"
+                on:click={() => viewMode = 'list'}
+                title="List view"
+              >
+                List
+              </button>
+              <button
+                type="button"
+                class="view-toggle-btn {viewMode === 'card' ? 'view-toggle-active' : ''}"
+                on:click={() => viewMode = 'card'}
+                title="Card view"
+              >
+                Cards
+              </button>
+            </div>
             {#if $isAuthenticated}
             <button class="action-btn select-btn" on:click={() => { selectMode = !selectMode; selectedIds = new Set(); }}>
               {selectMode ? 'Done' : 'Select'}
@@ -655,7 +685,9 @@
               {/if}
             </p>
           {:else}
-            <table class="w-full text-left text-sm">
+            {#if viewMode === 'list'}
+              <!-- Table view -->
+              <table class="w-full text-left text-sm">
                 <thead>
                   <tr class="border-b border-gray-200">
                     {#if selectMode}
@@ -666,8 +698,7 @@
                     <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Views</th>
                     <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Size</th>
-                    <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase share-col">Share Link</th>
-                    <th class="py-2 text-xs font-medium text-gray-500 uppercase actions-col">Actions</th>
+                    <th class="py-2 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -686,83 +717,125 @@
                       <td class="py-2 pr-4 text-gray-500">{res.category_name}</td>
                       <td class="py-2 pr-4">
                         {#if res.banned}
-                          <span class="text-red-600 font-bold">Banned</span>
+                          <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Banned</span>
                         {:else if res.transcode_status === 'done'}
-                          <span class="text-indigo-600">Ready</span>
+                          <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Ready</span>
                         {:else if res.transcode_status === 'processing'}
-                          <span class="text-yellow-600">Processing</span>
+                          <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700" aria-busy="true">Processing</span>
                         {:else if res.transcode_status === 'pending'}
-                          <span class="text-yellow-600">Pending</span>
+                          <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">Pending</span>
                         {:else if res.transcode_status === 'failed'}
-                          <span class="text-red-600">Failed</span>
+                          <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Failed</span>
                         {:else}
                           <span class="text-gray-400">&mdash;</span>
                         {/if}
                       </td>
                       <td class="py-2 pr-4">{res.views}</td>
                       <td class="py-2 pr-4 text-gray-500">{formatSize(res.file_size)}</td>
-                      <td class="py-2 pr-4 share-col">
-                        {#if res.category_name === 'global'}
-                          <button
-                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
-                            type="button"
-                            on:click={() => { copyShareLink(res.id); }}
-                          >
-                            {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
-                          </button>
-                        {:else if $isAuthenticated}
-                          <div class="flex gap-1">
-                            <button
-                              class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
-                              type="button"
-                              on:click={() => { openCreateLink(res.id); }}
-                            >
+                      <td class="py-2">
+                        <div class="flex gap-1">
+                          {#if res.category_name === 'global'}
+                            <button class="row-action-btn" type="button" on:click={() => { copyShareLink(res.id); }}>
+                              {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
+                            </button>
+                          {:else if $isAuthenticated}
+                            <button class="row-action-btn" type="button" on:click={() => { openCreateLink(res.id); }}>
                               Create Link
                             </button>
-                            <button
-                              class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
-                              type="button"
-                              on:click={() => { openManageLinks(res.id); }}
-                            >
-                              Manage Links
+                            <button class="row-action-btn" type="button" on:click={() => { openManageLinks(res.id); }}>
+                              Manage
                             </button>
-                          </div>
-                        {/if}
+                          {/if}
+                          {#if $isAuthenticated}
+                            <button class="row-action-btn row-action-retranscode" type="button" on:click={() => { handleRetranscode(res.id); }}>
+                              Re-transcode
+                            </button>
+                            {#if !res.banned}
+                              <button class="row-action-btn row-action-ban" type="button" on:click={() => { handleBan(res.id); }}>
+                                Ban
+                              </button>
+                            {/if}
+                            <button class="row-action-btn row-action-delete" type="button" on:click={() => { handleDelete(res.id); }}>
+                              Delete
+                            </button>
+                          {/if}
+                        </div>
                       </td>
-        {#if $isAuthenticated}
-                      <td class="py-2 actions-col">
-                        <button
-                          class="row-action-btn row-action-retranscode"
-                          type="button"
-                          on:click={() => { handleRetranscode(res.id); }}
-                        >
-                          Re-transcode
-                        </button>
-                        {#if !res.banned}
-                          <button
-                            class="row-action-btn row-action-ban"
-                            type="button"
-                            on:click={() => { handleBan(res.id); }}
-                          >
-                            Ban
-                          </button>
-                        {/if}
-                        <button
-                          class="row-action-btn row-action-delete"
-                          type="button"
-                          on:click={() => { handleDelete(res.id); }}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                      {/if}
                     </tr>
                   {/each}
                 </tbody>
               </table>
+            {:else}
+              <!-- Card view -->
+              <div class="resource-grid">
+                {#each resources as res}
+                  <div class="resource-card">
+                    {#if selectMode}
+                      <div class="card-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(res.id)}
+                          on:change={() => { toggleSelect(res.id); }}
+                        />
+                      </div>
+                    {/if}
+                    <div class="card-title">
+                      <a href="/#/v/{res.id}" class="text-indigo-600 hover:text-indigo-800 underline font-medium">{res.title}</a>
+                    </div>
+                    <div class="card-meta">
+                      <span class="card-category">{res.category_name}</span>
+                      {#if res.banned}
+                        <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Banned</span>
+                      {:else if res.transcode_status === 'done'}
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Ready</span>
+                      {:else if res.transcode_status === 'processing'}
+                        <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700" aria-busy="true">Processing</span>
+                      {:else if res.transcode_status === 'pending'}
+                        <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">Pending</span>
+                      {:else if res.transcode_status === 'failed'}
+                        <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Failed</span>
+                      {:else}
+                        <span class="text-gray-400">&mdash;</span>
+                      {/if}
+                    </div>
+                    <div class="card-stats">
+                      <span>{res.views} views</span>
+                      <span>{formatSize(res.file_size)}</span>
+                    </div>
+                    <div class="card-actions">
+                      {#if res.category_name === 'global'}
+                        <button class="card-action-btn" type="button" on:click={() => { copyShareLink(res.id); }}>
+                          {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
+                        </button>
+                      {:else if $isAuthenticated}
+                        <button class="card-action-btn" type="button" on:click={() => { openCreateLink(res.id); }}>
+                          Create Link
+                        </button>
+                        <button class="card-action-btn" type="button" on:click={() => { openManageLinks(res.id); }}>
+                          Manage
+                        </button>
+                      {/if}
+                      {#if $isAuthenticated}
+                        <button class="card-action-btn card-action-retranscode" type="button" on:click={() => { handleRetranscode(res.id); }}>
+                          Re-transcode
+                        </button>
+                        {#if !res.banned}
+                          <button class="card-action-btn card-action-ban" type="button" on:click={() => { handleBan(res.id); }}>
+                            Ban
+                          </button>
+                        {/if}
+                        <button class="card-action-btn card-action-delete" type="button" on:click={() => { handleDelete(res.id); }}>
+                          Delete
+                        </button>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
 
             <!-- Pagination -->
-            <div class="mt-3 flex items-center gap-2 text-sm">
+            <div class="mt-4 flex items-center gap-2 text-sm">
               <span class="text-gray-500">{offset + 1}&ndash;{offset + resources.length} of {total}</span>
               <button
                 class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -783,14 +856,15 @@
             </div>
           {/if}
         </div>
+        </div>
 
         <!-- Upload form -->
         {#if $isAuthenticated}
-        <div class="mt-6">
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
           <form on:submit|preventDefault={handleUpload} class="upload-form">
             <div class="upload-row-title">
               <span class="upload-label">upload</span>
-              <input type="text" id="title" name="title" bind:value={uploadForm.title} placeholder="title" required />
+              <input type="text" id="title" name="title" bind:value={uploadForm.title} placeholder="title" required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class:border-red-500={uploadForm.title !== '' && !titleValid} />
             </div>
             <div>
               <label for="readme" class="block text-sm font-medium text-gray-700 mb-1">Readme (Markdown)</label>
@@ -1072,7 +1146,7 @@
     gap: 0.5rem;
   }
 
-  .action-bar-left select:first-child {
+  .action-bar-left select {
     min-width: 180px;
   }
 
@@ -1139,9 +1213,142 @@
     margin: 0;
   }
 
+  .resource-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .resource-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: white;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    position: relative;
+  }
+
+  .resource-card:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  .card-checkbox {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+
+  .card-title {
+    font-size: 0.9rem;
+    line-height: 1.3;
+    padding-right: 1.5rem;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: #6b7280;
+  }
+
+  .card-category {
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+
+  .card-stats {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.75rem;
+    color: #9ca3af;
+  }
+
+  .card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid #f3f4f6;
+  }
+
+  .card-action-btn {
+    padding: 0.15rem 0.45rem;
+    font-size: 0.7rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .card-action-btn:hover {
+    background: #f3f4f6;
+  }
+
+  .card-action-retranscode {
+    color: #6366f1;
+    border-color: #c7d2fe;
+  }
+
+  .card-action-retranscode:hover {
+    background: #eef2ff;
+  }
+
+  .card-action-ban {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  .card-action-ban:hover {
+    background: #fef2f2;
+  }
+
+  .card-action-delete {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  .card-action-delete:hover {
+    background: #fef2f2;
+  }
+
+  .view-toggle-btn {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+    border: 1px solid #d1d5db;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .view-toggle-btn:first-child {
+    border-radius: 0.25rem 0 0 0.25rem;
+  }
+  .view-toggle-btn:last-child {
+    border-radius: 0 0.25rem 0.25rem 0;
+    border-left: none;
+  }
+  .view-toggle-active {
+    background: #6366f1;
+    color: white;
+    border-color: #6366f1;
+  }
+  .view-toggle-active + .view-toggle-btn {
+    border-left: 1px solid #6366f1;
+  }
+
   @media (max-width: 768px) {
     .content-row {
       flex-direction: column;
+    }
+    .resource-grid {
+      grid-template-columns: 1fr;
     }
   }
 
@@ -1180,18 +1387,6 @@
 
   .row-action-delete:hover {
     background: #fef2f2;
-  }
-
-  @media (max-width: 900px) {
-    .actions-col {
-      display: none;
-    }
-  }
-
-  @media (max-width: 600px) {
-    .share-col {
-      display: none;
-    }
   }
 
   .upload-form {

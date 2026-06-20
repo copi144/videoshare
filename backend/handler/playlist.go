@@ -56,6 +56,10 @@ func (h *PlaylistHandler) CreatePlaylistAPI(w http.ResponseWriter, r *http.Reque
 		respondJSONError(w, "Playlist name is required", http.StatusBadRequest)
 		return
 	}
+	if !model.IsValidName(req.Name) {
+		respondJSONError(w, "Playlist name must only contain letters, numbers, and hyphens", http.StatusBadRequest)
+		return
+	}
 	if req.CategoryID == "" {
 		respondJSONError(w, "Category is required", http.StatusBadRequest)
 		return

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { listResources, uploadVideo, deleteResource, retranscode, banResource, listCategories } from '../lib/api';
+  import MarkdownEditor from '../components/MarkdownEditor.svelte';
   import Categories from './Categories.svelte';
   import Playlists from './Playlists.svelte';
   import Users from './Users.svelte';
@@ -36,6 +37,10 @@
   let loading = true;
   let uploading = false;
   let copySuccess: string | null = null;
+
+  // Name validation pattern
+  const namePattern = /^[0-9A-Za-z\-]*$/;
+  $: titleValid = uploadForm.title === '' || namePattern.test(uploadForm.title);
 
   // Pagination (local state only)
   let limit = 50;
@@ -171,24 +176,24 @@
 <h1>Video Management</h1>
 
 {#if error}
-  <article class="error-box">{error}</article>
+  <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 mb-4">{error}</div>
 {/if}
 
 <!-- Upload Form -->
-<article>
-  <h2>Upload Video</h2>
-  <form on:submit|preventDefault={handleUpload}>
-    <label for="title">
-      Title
-      <input type="text" id="title" name="title" bind:value={uploadForm.title} required />
-    </label>
-    <label for="readme">
-      Readme (Markdown)
-      <textarea id="readme" name="readme" bind:value={uploadForm.readme} placeholder="Optional markdown description..."></textarea>
-    </label>
-    <label for="category">
-      Category
-      <select id="category" name="category_id" bind:value={uploadForm.category_id} required>
+<div class="rounded-lg border border-gray-200 bg-white p-4 mb-4">
+  <h2 class="text-base font-semibold text-gray-900 mb-3">Upload Video</h2>
+  <form on:submit|preventDefault={handleUpload} class="space-y-3">
+    <div>
+      <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title</label>
+      <input type="text" id="title" name="title" bind:value={uploadForm.title} required class="w-full" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class:border-red-500={uploadForm.title !== '' && !titleValid} />
+    </div>
+    <div>
+      <label for="readme" class="block text-sm font-medium text-gray-700 mb-1">Readme (Markdown)</label>
+      <MarkdownEditor bind:value={uploadForm.readme} placeholder="Optional markdown description..." />
+    </div>
+    <div>
+      <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+      <select id="category" name="category_id" bind:value={uploadForm.category_id} required class="w-full">
         <option value="">— Select a category —</option>
         {#each categories as cat}
           <option value={cat.name}>
@@ -196,9 +201,9 @@
           </option>
         {/each}
       </select>
-    </label>
-    <label for="file">
-      Video File
+    </div>
+    <div>
+      <label for="file" class="block text-sm font-medium text-gray-700 mb-1">Video File</label>
       <input
         type="file"
         id="file"
@@ -206,107 +211,163 @@
         accept="video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,audio/aac,image/jpeg,image/png,image/webp,image/gif"
         on:change={onFileChange}
         required
+        class="w-full"
       />
-    </label>
-    <label>
+    </div>
+    <label class="inline-flex items-center gap-2 text-sm text-gray-700">
       <input type="checkbox" bind:checked={uploadForm.noTranscode} />
       Skip transcoding (serve original file directly)
     </label>
     {#if uploadError}
-      <article class="error-box">{uploadError}</article>
+      <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{uploadError}</div>
     {/if}
-    <button type="submit" disabled={uploading} aria-busy={uploading}>
-      {uploading ? 'Uploading…' : 'Upload'}
-    </button>
+    <div class="flex justify-end">
+      <button type="submit" disabled={uploading} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" aria-busy={uploading}>
+        {uploading ? 'Uploading…' : 'Upload'}
+      </button>
+    </div>
   </form>
-</article>
+</div>
 
 <!-- Resources Table -->
-<h2>My Videos</h2>
+<h2 class="text-base font-semibold text-gray-900 mb-3">My Videos</h2>
 {#if loading}
-  <p aria-busy="true">Loading videos…</p>
+  <p class="text-gray-500 text-sm">Loading videos…</p>
 {:else if resources.length === 0}
-  <p>No videos yet. Upload one above.</p>
+  <p class="text-gray-500 text-sm">No videos yet. Upload one above.</p>
 {:else}
-  <figure>
-    <table role="grid">
+  <div class="rounded-lg border border-gray-200 bg-white p-4 mb-4">
+    <table class="w-full text-left text-sm">
       <thead>
-        <tr>
-          <th>Title</th>
-          <th>Category</th>
-          <th>Status</th>
-          <th>Views</th>
-          <th>Size</th>
-          <th>Share Link</th>
-          <th>Actions</th>
+        <tr class="border-b border-gray-200">
+          <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Title</th>
+          <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Category</th>
+          <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+          <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Views</th>
+          <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Size</th>
+          <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Share Link</th>
+          <th class="py-2 text-xs font-medium text-gray-500 uppercase">Actions</th>
         </tr>
       </thead>
       <tbody>
         {#each resources as res}
-          <tr>
-            <td>{res.title}</td>
-            <td>{res.category_name}</td>
-            <td>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 pr-4">{res.title}</td>
+            <td class="py-2 pr-4 text-gray-500">{res.category_name}</td>
+            <td class="py-2 pr-4">
               {#if res.banned}
-                <span style="color: red; font-weight: bold;">Banned</span>
+                <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Banned</span>
               {:else if res.transcode_status === 'done'}
-                <span style="color: var(--primary);">Ready</span>
+                <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Ready</span>
               {:else if res.transcode_status === 'processing'}
-                <span style="color: var(--warning);" aria-busy="true">Processing</span>
+                <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700" aria-busy="true">Processing</span>
               {:else if res.transcode_status === 'pending'}
-                <span style="color: var(--warning);">Pending</span>
+                <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">Pending</span>
               {:else if res.transcode_status === 'failed'}
-                <span style="color: var(--invalid);">Failed</span>
+                <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Failed</span>
               {:else}
-                <span style="color: var(--muted-color, #888);">&mdash;</span>
+                <span class="text-gray-400">&mdash;</span>
               {/if}
             </td>
-            <td>{res.views}</td>
-            <td>{formatSize(res.file_size)}</td>
-            <td>
-              <button class="outline" type="button" on:click={() => copyShareLink(res.id)}>
+            <td class="py-2 pr-4">{res.views}</td>
+            <td class="py-2 pr-4">{formatSize(res.file_size)}</td>
+            <td class="py-2 pr-4">
+              <button class="row-action-btn" type="button" on:click={() => copyShareLink(res.id)}>
                 {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
               </button>
             </td>
-            <td>
-              <button class="outline" type="button" on:click={() => handleRetranscode(res.id)}>
-                Re-transcode
-              </button>
-              {#if !res.banned}
-                <button class="outline secondary" type="button" on:click={() => handleBan(res.id)}>
-                  Ban
+            <td class="py-2">
+              <div class="flex gap-1">
+                <button class="row-action-btn" type="button" on:click={() => handleRetranscode(res.id)}>
+                  Re-transcode
                 </button>
-              {/if}
-              <button class="outline secondary" type="button" on:click={() => handleDelete(res.id)}>
-                Delete
-              </button>
+                {#if !res.banned}
+                  <button class="row-action-btn" type="button" on:click={() => handleBan(res.id)}>
+                    Ban
+                  </button>
+                {/if}
+                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(res.id)}>
+                  Delete
+                </button>
+              </div>
             </td>
           </tr>
         {/each}
       </tbody>
     </table>
-  </figure>
-
-  <!-- Pagination -->
-  <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-    <span>{offset + 1}–{offset + resources.length} of {total}</span>
-    <button type="button" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
-    <button type="button" on:click={() => { offset += limit; loadData(); }} disabled={offset + resources.length >= total}>Next</button>
+    <div class="mt-3 flex items-center gap-2 text-sm">
+      <span class="text-gray-500">{offset + 1}–{offset + resources.length} of {total}</span>
+      <button type="button" class="row-action-btn" on:click={() => { if (offset > 0) { offset = Math.max(0, offset - limit); loadData(); } }} disabled={offset === 0}>Prev</button>
+      <button type="button" class="row-action-btn" on:click={() => { offset += limit; loadData(); }} disabled={offset + resources.length >= total}>Next</button>
+    </div>
   </div>
 {/if}
 
 <!-- Management Sections -->
-<details style="margin-top: 1.5rem;">
-  <summary role="button" class="outline secondary">Category Management</summary>
+<details class="admin-details">
+  <summary class="admin-summary">Category Management</summary>
   <Categories onError={setError} />
 </details>
 
-<details style="margin-top: 1rem;">
-  <summary role="button" class="outline secondary">Playlist Management</summary>
+<details class="admin-details">
+  <summary class="admin-summary">Playlist Management</summary>
   <Playlists onError={setError} />
 </details>
 
-<details style="margin-top: 1rem;">
-  <summary role="button" class="outline secondary">User Management</summary>
+<details class="admin-details">
+  <summary class="admin-summary">User Management</summary>
   <Users onError={setError} />
 </details>
+
+<style>
+  .row-action-btn {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .row-action-btn:hover {
+    background: #f3f4f6;
+  }
+  .row-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .row-action-delete {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+  .row-action-delete:hover:not(:disabled) {
+    background: #fef2f2;
+  }
+  .admin-details {
+    margin-top: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    background: white;
+    overflow: hidden;
+  }
+  .admin-summary {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    user-select: none;
+  }
+  .admin-summary:hover {
+    background: #f3f4f6;
+  }
+  .admin-details[open] .admin-summary {
+    border-bottom: 1px solid #d1d5db;
+  }
+  .admin-details > :not(summary) {
+    padding: 1rem;
+  }
+</style>

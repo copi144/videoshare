@@ -9,6 +9,10 @@
   let error: string | null = null;
   let loading = false;
 
+  // Name validation pattern
+  const namePattern = /^[0-9A-Za-z\-]*$/;
+  $: nameValid = name === '' || namePattern.test(name);
+
   async function handleSubmit() {
     error = null;
     loading = true;
@@ -35,7 +39,7 @@
   <form on:submit|preventDefault={handleSubmit}>
     <label for="name">
       Name
-      <input type="text" id="name" name="name" bind:value={name} required autocomplete="username" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
+      <input type="text" id="name" name="name" bind:value={name} required autocomplete="username" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class:border-red-500={name !== '' && !nameValid} />
     </label>
     <label for="totp_code">
       Authentication Code
@@ -52,7 +56,7 @@
       />
     </label>
     {#if error}
-      <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>
+      <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 mb-4">{error}</div>
     {/if}
     <button type="submit" disabled={loading} aria-busy={loading}>
       {loading ? 'Logging in…' : 'Login'}

@@ -20,6 +20,10 @@
 
   let totpResult: { name: string; totp_secret: string; totp_uri: string; qr_image: string } | null = null;
 
+  // Name validation pattern
+  const namePattern = /^[0-9A-Za-z\-]*$/;
+  $: nameValid = name === '' || namePattern.test(name);
+
   onMount(loadUsers);
 
   async function loadUsers() {
@@ -168,24 +172,46 @@
   <!-- Create form -->
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-base font-semibold text-gray-900 mb-3">Create User</h2>
-    <form on:submit|preventDefault={handleCreate} class="space-y-3">
-      <div>
-        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-        <input type="text" id="name" bind:value={name} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+    <form on:submit|preventDefault={handleCreate}>
+      <!-- Name + Display Name inline -->
+      <div class="flex gap-3 mb-3">
+        <div class="flex-1">
+          <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+          <input type="text" id="name" bind:value={name} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" class:border-red-500={name !== '' && !nameValid} />
+        </div>
+        <div class="flex-1">
+          <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+          <input type="text" id="display_name" bind:value={displayName} class="w-full" />
+        </div>
       </div>
-      <div>
-        <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
-        <input type="text" id="display_name" bind:value={displayName} class="w-full" />
+
+      <!-- Admin toggle: two radio-style buttons -->
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
+        <div class="inline-flex rounded-md shadow-sm">
+          <button
+            type="button"
+            class="px-4 py-2 text-sm font-medium rounded-l-md border {!isAdmin ? 'bg-indigo-600 text-white border-indigo-600 z-10' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+            on:click={() => isAdmin = false}
+          >
+            User
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2 text-sm font-medium rounded-r-md border-t border-b border-r {isAdmin ? 'bg-indigo-600 text-white border-indigo-600 z-10' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+            on:click={() => isAdmin = true}
+          >
+            Admin
+          </button>
+        </div>
       </div>
-      <div>
-        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-          <input type="checkbox" bind:checked={isAdmin} />
-          Admin (full access)
-        </label>
+
+      <!-- Button row: right-aligned -->
+      <div class="flex justify-end">
+        <button type="submit" disabled={creating} aria-busy={creating} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+          {creating ? 'Creating…' : 'Create User'}
+        </button>
       </div>
-      <button type="submit" disabled={creating} aria-busy={creating} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
-        {creating ? 'Creating…' : 'Create User'}
-      </button>
     </form>
   </div>
 </div>
@@ -194,28 +220,24 @@
   .row-action-btn {
     padding: 0.2rem 0.5rem;
     font-size: 0.75rem;
-    border: 1px solid;
+    border: 1px solid #d1d5db;
     border-radius: 0.25rem;
     background: white;
+    color: #374151;
     cursor: pointer;
     white-space: nowrap;
-    margin-right: 0.25rem;
   }
-
   .row-action-btn:hover {
     background: #f3f4f6;
   }
-
   .row-action-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-
   .row-action-delete {
     color: #dc2626;
     border-color: #fecaca;
   }
-
   .row-action-delete:hover:not(:disabled) {
     background: #fef2f2;
   }

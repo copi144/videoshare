@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { createPlaylist, deletePlaylist, listCategories, listPlaylists } from '../lib/api';
+  import MarkdownEditor from '../components/MarkdownEditor.svelte';
 
   export let onError: ((msg: string) => void) | undefined = undefined;
 
@@ -28,6 +29,10 @@
   let formPlaylistType: 'video' | 'audio' | 'image' = 'video';
   let success: string | null = null;
   let loading = true;
+
+  // Name validation pattern
+  const namePattern = /^[0-9A-Za-z\-]*$/;
+  $: formNameValid = formName === '' || namePattern.test(formName);
 
   // Pagination (local state only)
   let limit = 50;
@@ -151,20 +156,23 @@
   <!-- Create form -->
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-base font-semibold text-gray-900 mb-3">Create Playlist</h2>
-    <form on:submit|preventDefault={handleCreate} class="space-y-3">
-      <div>
-        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-        <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+    <form on:submit|preventDefault={handleCreate}>
+      <!-- Name + Display Name inline -->
+      <div class="flex gap-3 mb-3">
+        <div class="flex-1">
+          <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+          <input type="text" id="name" name="name" bind:value={formName} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" class:border-red-500={formName !== '' && !formNameValid} />
+        </div>
+        <div class="flex-1">
+          <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+          <input type="text" id="display_name" bind:value={formDisplayName} class="w-full" />
+        </div>
       </div>
-      <div>
-        <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
-        <input type="text" id="display_name" bind:value={formDisplayName} class="w-full" />
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Description (Markdown)</label>
+        <MarkdownEditor bind:value={formDescription} placeholder="Optional markdown description..." />
       </div>
-      <div>
-        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-        <textarea id="description" name="description" bind:value={formDescription} class="w-full"></textarea>
-      </div>
-      <div class="flex gap-3">
+      <div class="flex gap-3 mb-3">
         <div class="flex-1">
           <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
           <select id="category" name="category_id" bind:value={formCategoryId} required class="w-full">
@@ -183,7 +191,32 @@
           </select>
         </div>
       </div>
-      <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
+      <div class="flex justify-end">
+        <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Create</button>
+      </div>
     </form>
   </div>
 </div>
+
+<style>
+  .row-action-btn {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .row-action-btn:hover {
+    background: #f3f4f6;
+  }
+  .row-action-delete {
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+  .row-action-delete:hover {
+    background: #fef2f2;
+  }
+</style>
