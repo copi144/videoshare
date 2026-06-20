@@ -105,59 +105,38 @@ func BootstrapGlobalCategory(db *sql.DB, adminName string) error {
 }
 
 func migrate(db *sql.DB) error {
-	query := `CREATE TABLE IF NOT EXISTS resources (
+	// ── Resources table (full schema, v1.0) ──
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS resources (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,
 		filename TEXT NOT NULL,
 		file_size INTEGER NOT NULL,
 		content_type TEXT NOT NULL,
+		resource_type TEXT NOT NULL,
 		views INTEGER NOT NULL DEFAULT 0,
+		uploaded_by TEXT NOT NULL REFERENCES users(name),
+		transcode_status TEXT NOT NULL DEFAULT 'none',
+		banned INTEGER NOT NULL DEFAULT 0,
+		no_transcode INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-	)`
-
-	if _, err := db.Exec(query); err != nil {
+	)`); err != nil {
 		return fmt.Errorf("create resources table: %w", err)
 	}
 
-	sessionQuery := `CREATE TABLE IF NOT EXISTS sessions (
+	// ── Sessions table ──
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS sessions (
 		token TEXT PRIMARY KEY,
 		data BLOB NOT NULL,
 		expiry DATETIME NOT NULL
-	)`
-
-	if _, err := db.Exec(sessionQuery); err != nil {
+	)`); err != nil {
 		return fmt.Errorf("create sessions table: %w", err)
 	}
-
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expiry)"); err != nil {
 		return fmt.Errorf("create sessions expiry index: %w", err)
 	}
 
-	// Add new columns to resources table (idempotent — errors are expected if columns exist)
-	columns := []string{"uploaded_by", "transcode_status", "banned", "no_transcode", "resource_type"}
-	for _, col := range columns {
-		var def string
-		switch col {
-		case "banned":
-			def = "INTEGER NOT NULL DEFAULT 0"
-		case "no_transcode":
-			def = "INTEGER NOT NULL DEFAULT 0"
-		case "transcode_status":
-			def = "TEXT NOT NULL DEFAULT 'none'"
-		case "resource_type":
-			def = "TEXT NOT NULL DEFAULT 'video'"
-		default:
-			def = "TEXT REFERENCES users(name)"
-		}
-		_, err := db.Exec(fmt.Sprintf("ALTER TABLE resources ADD COLUMN %s %s", col, def))
-		if err != nil {
-			// Column already exists or other error — log and continue
-			slog.Debug("column may already exist", "column", col, "error", err)
-		}
-	}
-
-	// New multi-user tables
+	// ── All other tables ──
 	tables := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			name TEXT PRIMARY KEY,
@@ -204,7 +183,28 @@ func migrate(db *sql.DB) error {
 			expires_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
-
+		`CREATE TABLE IF NOT EXISTS share_resources (
+			resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+			password TEXT NOT NULL,
+			expires_at DATETIME,
+			created_by TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (resource_id, password)
+		)`,
+		`CREATE TABLE IF NOT EXISTS share_links (
+			id TEXT PRIMARY KEY,
+			password TEXT NOT NULL,
+			target_type TEXT NOT NULL,
+			target_id TEXT NOT NULL,
+			expires_at DATETIME,
+			created_by TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS resource_categories (
+			resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+			category_name TEXT NOT NULL REFERENCES categories(name) ON DELETE CASCADE,
+			PRIMARY KEY (resource_id, category_name)
+		)`,
 	}
 
 	for _, q := range tables {
@@ -213,99 +213,30 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
-	// Drop old share_links table (schema changed)
-	if _, err := db.Exec("DROP TABLE IF EXISTS share_links"); err != nil {
-		return fmt.Errorf("drop old share_links: %w", err)
+	// ── Indexes ──
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_resource_categories_resource_id ON resource_categories(resource_id)",
+		"CREATE INDEX IF NOT EXISTS idx_resource_categories_category_name ON resource_categories(category_name)",
+		"CREATE INDEX IF NOT EXISTS idx_resources_created_at ON resources(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_resources_uploaded_by ON resources(uploaded_by)",
+		"CREATE INDEX IF NOT EXISTS idx_resources_transcode_status ON resources(transcode_status)",
+		"CREATE INDEX IF NOT EXISTS idx_resources_banned ON resources(banned)",
+		"CREATE INDEX IF NOT EXISTS idx_resources_no_transcode ON resources(no_transcode)",
+		"CREATE INDEX IF NOT EXISTS idx_resources_resource_type ON resources(resource_type)",
+		"CREATE INDEX IF NOT EXISTS idx_categories_created_at ON categories(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_playlists_category_name ON playlists(category_name)",
+		"CREATE INDEX IF NOT EXISTS idx_playlists_created_at ON playlists(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_playlists_sort_order ON playlists(sort_order)",
+		"CREATE INDEX IF NOT EXISTS idx_playlists_playlist_type ON playlists(playlist_type)",
+		"CREATE INDEX IF NOT EXISTS idx_playlist_videos_resource_id ON playlist_videos(resource_id)",
+		"CREATE INDEX IF NOT EXISTS idx_category_users_name ON category_users(name)",
+		"CREATE INDEX IF NOT EXISTS idx_share_links_target ON share_links(target_type, target_id)",
 	}
 
-	// New share_resources table
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS share_resources (
-		resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-		password TEXT NOT NULL,
-		expires_at DATETIME,
-		created_by TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		PRIMARY KEY (resource_id, password)
-	)`); err != nil {
-		return fmt.Errorf("create share_resources: %w", err)
-	}
-
-	// New share_links table (categories/playlists)
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS share_links (
-		id TEXT PRIMARY KEY,
-		password TEXT NOT NULL,
-		target_type TEXT NOT NULL,
-		target_id TEXT NOT NULL,
-		expires_at DATETIME,
-		created_by TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-	)`); err != nil {
-		return fmt.Errorf("create share_links: %w", err)
-	}
-
-	// Resource-categories join table (many-to-many)
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS resource_categories (
-		resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-		category_name TEXT NOT NULL REFERENCES categories(name) ON DELETE CASCADE,
-		PRIMARY KEY (resource_id, category_name)
-	)`); err != nil {
-		return fmt.Errorf("create resource_categories: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resource_categories_resource_id ON resource_categories(resource_id)"); err != nil {
-		return fmt.Errorf("create resource_categories resource_id index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resource_categories_category_name ON resource_categories(category_name)"); err != nil {
-		return fmt.Errorf("create resource_categories category_name index: %w", err)
-	}
-
-	// Explicit performance indexes (added for pagination and list queries; idempotent)
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_created_at ON resources(created_at)"); err != nil {
-		return fmt.Errorf("create resources created_at index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_uploaded_by ON resources(uploaded_by)"); err != nil {
-		return fmt.Errorf("create resources uploaded_by index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_transcode_status ON resources(transcode_status)"); err != nil {
-		return fmt.Errorf("create resources transcode_status index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_banned ON resources(banned)"); err != nil {
-		return fmt.Errorf("create resources banned index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_no_transcode ON resources(no_transcode)"); err != nil {
-		return fmt.Errorf("create resources no_transcode index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_categories_created_at ON categories(created_at)"); err != nil {
-		return fmt.Errorf("create categories created_at index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_category_name ON playlists(category_name)"); err != nil {
-		return fmt.Errorf("create playlists category_name index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_created_at ON playlists(created_at)"); err != nil {
-		return fmt.Errorf("create playlists created_at index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_sort_order ON playlists(sort_order)"); err != nil {
-		return fmt.Errorf("create playlists sort_order index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_resources_resource_type ON resources(resource_type)"); err != nil {
-		return fmt.Errorf("create resources resource_type index: %w", err)
-	}
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlists_playlist_type ON playlists(playlist_type)"); err != nil {
-		return fmt.Errorf("create playlists playlist_type index: %w", err)
-	}
-
-	// Indexes for playlist_videos resource_id lookups (GetPlaylistsForResource)
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_playlist_videos_resource_id ON playlist_videos(resource_id)"); err != nil {
-		return fmt.Errorf("create playlist_videos resource_id index: %w", err)
-	}
-
-	// Index for category_users name lookups (ListCategoriesByUploader)
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_category_users_name ON category_users(name)"); err != nil {
-		return fmt.Errorf("create category_users name index: %w", err)
-	}
-
-	// Composite index for share_links target lookups (ListByTarget)
-	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_share_links_target ON share_links(target_type, target_id)"); err != nil {
-		return fmt.Errorf("create share_links target index: %w", err)
+	for _, idx := range indexes {
+		if _, err := db.Exec(idx); err != nil {
+			return fmt.Errorf("create index: %w", err)
+		}
 	}
 
 	return nil
