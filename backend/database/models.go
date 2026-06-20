@@ -11,7 +11,6 @@ import (
 
 type ApiToken struct {
 	Token     string
-	UserID    string
 	UserRole  string
 	Username  string
 	ExpiresAt time.Time
@@ -28,7 +27,8 @@ type Category struct {
 
 type CategoryUser struct {
 	CategoryName string
-	UserID       string
+	Name         string
+	CanUpload    int64
 }
 
 type Playlist struct {
@@ -74,6 +74,15 @@ type Session struct {
 
 type ShareLink struct {
 	ID         string
+	Password   string
+	TargetType string
+	TargetID   string
+	ExpiresAt  sql.NullTime
+	CreatedBy  string
+	CreatedAt  time.Time
+}
+
+type ShareResource struct {
 	ResourceID string
 	Password   string
 	ExpiresAt  sql.NullTime
@@ -82,10 +91,9 @@ type ShareLink struct {
 }
 
 type User struct {
-	ID          string
-	Username    string
+	Name        string
 	TotpSecret  string
 	DisplayName string
-	Role        string
+	IsAdmin     int64
 	CreatedAt   time.Time
 }

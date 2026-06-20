@@ -4,7 +4,7 @@
 
   export let onSuccess: () => void;
 
-  let username = '';
+  let name = '';
   let totpCode = '';
   let error: string | null = null;
   let loading = false;
@@ -13,7 +13,7 @@
     error = null;
     loading = true;
     try {
-      const result = await createSession('user', { username, totp_code: totpCode });
+      const result = await createSession('user', { name, totp_code: totpCode });
       if (result.ok) {
         if (result.api_token) {
           setApiToken(result.api_token);
@@ -31,12 +31,11 @@
   }
 </script>
 
-<h1>Login</h1>
-<article>
+<div>
   <form on:submit|preventDefault={handleSubmit}>
-    <label for="username">
-      Username
-      <input type="text" id="username" name="username" bind:value={username} required autocomplete="username" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
+    <label for="name">
+      Name
+      <input type="text" id="name" name="name" bind:value={name} required autocomplete="username" pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" />
     </label>
     <label for="totp_code">
       Authentication Code
@@ -59,4 +58,4 @@
       {loading ? 'Logging in…' : 'Login'}
     </button>
   </form>
-</article>
+</div>

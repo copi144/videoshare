@@ -68,6 +68,29 @@ On first run, the server creates a SQLite database, bootstraps the admin account
 
 Scan the QR code with your authenticator app, then navigate to `http://localhost:8080`. Enter `admin` as the username and the 6-digit code from your authenticator app.
 
+### Admin TOTP Reset
+
+If you lose access to your authenticator app (phone lost, app reset, etc.), you can reset the admin TOTP secret without losing any data:
+
+1. **Stop the server** if it is running.
+2. **Create a file** named `reset-admin-totp.txt` in the `DATA_DIR` directory (default: `./data/`).
+3. **Set the admin username** in the file. If the file contains the admin username (e.g., `admin`), that account's TOTP will be reset. If the file is empty, the `ADMIN_USERNAME` environment variable is used instead.
+4. **Start the server**. On startup, it will detect the file, generate a new TOTP secret, print the QR code and TOTP URI to the terminal, then **delete the reset file** automatically.
+5. **Scan the QR code** with your authenticator app and log in normally.
+
+> ⚠️ The reset file is consumed and deleted on every server startup. If the server fails to read or process the file (e.g., the specified user does not exist), it will log an error and continue without resetting anything.
+
+Example:
+
+```bash
+# Stop the server, then:
+echo "admin" > data/reset-admin-totp.txt
+# Start the server — the new TOTP QR code will be printed in the terminal
+./videoserver
+```
+
+**Important security note:** Remove the reset file immediately after the server processes it. The server does this automatically, but in the rare event of a crash before the file is deleted, the reset will trigger again on the next startup.
+
 ## Configuration
 
 All configuration is via environment variables:

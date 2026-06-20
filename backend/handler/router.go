@@ -20,7 +20,7 @@ import (
 func NewRouter(sm *scs.SessionManager,
 	resourceStore *model.ResourceStore, dataDir string, db *sql.DB,
 	userStore *model.UserStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore,
-	shareLinkStore *model.ShareLinkStore,
+	shareResourceStore *model.ShareResourceStore, shareLinkStore *model.ShareLinkStore,
 	transcodeQueue *transcode.Queue, ffmpegPath string) (http.Handler, []func()) {
 	r := chi.NewRouter()
 
@@ -33,7 +33,7 @@ func NewRouter(sm *scs.SessionManager,
 	rl, stop := middleware.RateLimit(60, time.Minute)
 	r.Use(rl)
 
-	r.Use(middleware.APIAuth(db))
+	r.Use(middleware.APIAuth(db, sm))
 
 	var stops []func()
 	stops = append(stops, stop)
@@ -56,8 +56,9 @@ func NewRouter(sm *scs.SessionManager,
 	// Create handlers with dependency injection.
 	userH := NewUserHandler(userStore, sm, db)
 	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, userStore, playlistStore, transcodeQueue, ffmpegPath)
-	shareLinkH := NewShareLinkHandler(shareLinkStore, resourceStore)
-	sessionH := NewSessionHandler(userStore, resourceStore, shareLinkStore, categoryStore, sm, db)
+	shareResourceH := NewShareResourceHandler(shareResourceStore, resourceStore)
+	shareLinkH := NewShareLinkHandler(shareLinkStore, categoryStore, playlistStore)
+	sessionH := NewSessionHandler(userStore, resourceStore, shareResourceStore, categoryStore, sm, db)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
 	categoryH := NewCategoryHandler(categoryStore, userStore, sm)
@@ -114,15 +115,23 @@ func NewRouter(sm *scs.SessionManager,
 			// JSON API routes for users (admin only)
 			r.Post("/api/users", userH.CreateUserAPI)
 			r.Get("/api/users", userH.ListUsersAPI)
-			r.Delete("/api/users/{id}", userH.DeleteUserAPI)
-			r.Post("/api/users/{id}/reset-totp", userH.ResetTOTPAPI)
+			r.Delete("/api/users/{name}", userH.DeleteUserAPI)
+			r.Post("/api/users/{name}/reset-totp", userH.ResetTOTPAPI)
 		})
 
-		// Share link management — requires user auth
-		r.Post("/api/share-links", shareLinkH.CreateShareLinkAPI)
-		r.Get("/api/share-links", shareLinkH.ListShareLinksAPI)
-		r.Delete("/api/share-links/{id}", shareLinkH.DeleteShareLinkAPI)
+		// Resource share link management — requires user auth
+		r.Post("/api/share-resources", shareResourceH.CreateAPI)
+		r.Get("/api/share-resources", shareResourceH.ListAPI)
+		r.Delete("/api/share-resources/{resourceID}/{password}", shareResourceH.DeleteAPI)
+
+		// Category/Playlist share link management — requires user auth
+		r.Post("/api/share-links", shareLinkH.CreateAPI)
+		r.Get("/api/share-links", shareLinkH.ListAPI)
+		r.Delete("/api/share-links/{id}", shareLinkH.DeleteAPI)
 	})
+
+	// Share link auth — public (for /#/s/{id}/{password} URL access)
+	r.Post("/api/share-links/{id}/auth", shareLinkH.AuthenticateAPI)
 
 	// Video streaming — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}", streamH.ServeVideo)

@@ -58,11 +58,11 @@ async function request<T>(method: string, path: string, body?: any): Promise<T> 
 }
 
 // Auth
-export const login = (username: string, totpCode: string) =>
-  request<{ok: boolean; redirect?: string; api_token?: string}>('POST', '/api/login', { username, totp_code: totpCode });
+export const login = (name: string, totpCode: string) =>
+  request<{ok: boolean; redirect?: string; api_token?: string}>('POST', '/api/login', { name, totp_code: totpCode });
 
 export const checkMe = () =>
-  request<{authenticated: boolean; user?: {id: string; username: string; role: string}; api_token?: string}>('GET', '/api/me');
+  request<{authenticated: boolean; user?: {name: string; is_admin: boolean}; api_token?: string}>('GET', '/api/me');
 
 export const logout = () =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/logout');
@@ -126,7 +126,7 @@ export const updateReadme = (resourceId: string, readme: string) =>
   request<{ok: boolean}>('PUT', `/api/resources/${resourceId}/readme`, { readme });
 
 export const createSession = (type: 'user' | 'share' | 'token', data: Record<string, any>) =>
-  request<{ok: boolean; redirect?: string; api_token?: string; user?: {id: string; username: string; role: string}}>('POST', '/api/session', { type, ...data });
+  request<{ok: boolean; redirect?: string; api_token?: string; user?: {name: string; is_admin: boolean}}>('POST', '/api/session', { type, ...data });
 
 // Categories
 export const listCategories = (params?: {limit?: number; offset?: number}) => {
@@ -177,28 +177,42 @@ export const addVideoToPlaylist = (playlistId: string, resourceId: string) =>
 export const removeVideoFromPlaylist = (playlistId: string, resourceId: string) =>
   request<{ok: boolean}>('DELETE', `/api/playlists/${playlistId}/videos/${resourceId}`);
 
-// Share Links
+// Resource Share Links — API: /api/share-resources
 export const createShareLink = (resourceId: string, expiresInMinutes: number) =>
-  request<{ok: boolean; url: string; id: string; password: string; expires_at: string}>('POST', '/api/share-links', { resource_id: resourceId, expires_in_minutes: expiresInMinutes });
+  request<{ok: boolean; url: string; password: string; expires_at: string}>('POST', '/api/share-resources', { resource_id: resourceId, expires_in_minutes: expiresInMinutes });
 
 export const listShareLinks = (resourceId: string) =>
-  request<{share_links: Array<{id: string; resource_id: string; expires_at: string | null; created_by: string; created_at: string}>}>('GET', `/api/share-links?resource_id=${resourceId}`);
+  request<{share_links: Array<{resource_id: string; password: string; expires_at: string | null; created_by: string; created_at: string}>}>('GET', `/api/share-resources?resource_id=${resourceId}`);
 
-export const deleteShareLink = (id: string) =>
+export const deleteShareLink = (resourceId: string, password: string) =>
+  request<{ok: boolean}>('DELETE', `/api/share-resources/${encodeURIComponent(resourceId)}/${encodeURIComponent(password)}`);
+
+// Category/Playlist Share Links — API: /api/share-links
+export const createTargetShareLink = (targetType: string, targetId: string, expiresInMinutes: number) =>
+  request<{ok: boolean; url: string; id: string; password: string; target_type: string; target_id: string; expires_at: string}>('POST', '/api/share-links', { target_type: targetType, target_id: targetId, expires_in_minutes: expiresInMinutes });
+
+export const listTargetShareLinks = (targetType: string, targetId: string) =>
+  request<{share_links: Array<{id: string; target_type: string; target_id: string; expires_at: string | null; created_by: string; created_at: string}>}>('GET', `/api/share-links?target_type=${targetType}&target_id=${targetId}`);
+
+export const deleteTargetShareLink = (id: string) =>
   request<{ok: boolean}>('DELETE', `/api/share-links/${id}`);
 
+// Auth for /#/s/{id}/{password} links
+export const authenticateShareLink = (id: string, password: string) =>
+  request<{ok: boolean; redirect: string; target_type: string; target_id: string}>('POST', `/api/share-links/${id}/auth`, { password });
+
 // Users
-export const createUser = (username: string, role: string, displayName: string) =>
-  request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { username, role, display_name: displayName });
+export const createUser = (name: string, isAdmin: boolean, displayName: string) =>
+  request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { name, is_admin: isAdmin, display_name: displayName });
 
 export const listUsers = () =>
-  request<{users: Array<{id: string; username: string; display_name: string; role: string; created_at: string}>}>('GET', '/api/users');
+  request<{users: Array<{name: string; display_name: string; is_admin: boolean; created_at: string}>}>('GET', '/api/users');
 
-export const deleteUser = (id: string) =>
-  request<{ok: boolean}>('DELETE', `/api/users/${id}`);
+export const deleteUser = (name: string) =>
+  request<{ok: boolean}>('DELETE', `/api/users/${name}`);
 
-export const resetTOTP = (id: string) =>
-  request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string}>('POST', `/api/users/${id}/reset-totp`);
+export const resetTOTP = (name: string) =>
+  request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string}>('POST', `/api/users/${name}/reset-totp`);
 
 // Me
 

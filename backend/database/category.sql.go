@@ -11,17 +11,34 @@ import (
 )
 
 const addUploader = `-- name: AddUploader :exec
-INSERT INTO category_users (category_name, user_id) VALUES (?, ?)
+INSERT INTO category_users (category_name, name, can_upload) VALUES (?, ?, ?)
 `
 
 type AddUploaderParams struct {
 	CategoryName string
-	UserID       string
+	Name         string
+	CanUpload    int64
 }
 
 func (q *Queries) AddUploader(ctx context.Context, arg AddUploaderParams) error {
-	_, err := q.db.ExecContext(ctx, addUploader, arg.CategoryName, arg.UserID)
+	_, err := q.db.ExecContext(ctx, addUploader, arg.CategoryName, arg.Name, arg.CanUpload)
 	return err
+}
+
+const canUpload = `-- name: CanUpload :one
+SELECT COUNT(*) FROM category_users WHERE category_name = ? AND name = ? AND can_upload = 1
+`
+
+type CanUploadParams struct {
+	CategoryName string
+	Name         string
+}
+
+func (q *Queries) CanUpload(ctx context.Context, arg CanUploadParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, canUpload, arg.CategoryName, arg.Name)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const clearCategoryUploaders = `-- name: ClearCategoryUploaders :exec
@@ -45,11 +62,11 @@ func (q *Queries) CountCategories(ctx context.Context) (int64, error) {
 }
 
 const countCategoriesByUploader = `-- name: CountCategoriesByUploader :one
-SELECT COUNT(*) FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ?
+SELECT COUNT(*) FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.name = ? AND cu.can_upload = 1
 `
 
-func (q *Queries) CountCategoriesByUploader(ctx context.Context, userID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countCategoriesByUploader, userID)
+func (q *Queries) CountCategoriesByUploader(ctx context.Context, name string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countCategoriesByUploader, name)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -113,17 +130,17 @@ func (q *Queries) GetCategoryVideoCount(ctx context.Context, categoryName sql.Nu
 	return count, err
 }
 
-const isUploaderAuthorized = `-- name: IsUploaderAuthorized :one
-SELECT COUNT(*) FROM category_users WHERE category_name = ? AND user_id = ?
+const isAssigned = `-- name: IsAssigned :one
+SELECT COUNT(*) FROM category_users WHERE category_name = ? AND name = ?
 `
 
-type IsUploaderAuthorizedParams struct {
+type IsAssignedParams struct {
 	CategoryName string
-	UserID       string
+	Name         string
 }
 
-func (q *Queries) IsUploaderAuthorized(ctx context.Context, arg IsUploaderAuthorizedParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, isUploaderAuthorized, arg.CategoryName, arg.UserID)
+func (q *Queries) IsAssigned(ctx context.Context, arg IsAssignedParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, isAssigned, arg.CategoryName, arg.Name)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -163,11 +180,11 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 }
 
 const listCategoriesByUploader = `-- name: ListCategoriesByUploader :many
-SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ? ORDER BY c.created_at DESC
+SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.name = ? AND cu.can_upload = 1 ORDER BY c.created_at DESC
 `
 
-func (q *Queries) ListCategoriesByUploader(ctx context.Context, userID string) ([]Category, error) {
-	rows, err := q.db.QueryContext(ctx, listCategoriesByUploader, userID)
+func (q *Queries) ListCategoriesByUploader(ctx context.Context, name string) ([]Category, error) {
+	rows, err := q.db.QueryContext(ctx, listCategoriesByUploader, name)
 	if err != nil {
 		return nil, err
 	}
@@ -196,17 +213,17 @@ func (q *Queries) ListCategoriesByUploader(ctx context.Context, userID string) (
 }
 
 const listCategoriesByUploaderPaginated = `-- name: ListCategoriesByUploaderPaginated :many
-SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ? ORDER BY c.created_at DESC LIMIT ? OFFSET ?
+SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.name = ? AND cu.can_upload = 1 ORDER BY c.created_at DESC LIMIT ? OFFSET ?
 `
 
 type ListCategoriesByUploaderPaginatedParams struct {
-	UserID string
+	Name   string
 	Limit  int64
 	Offset int64
 }
 
 func (q *Queries) ListCategoriesByUploaderPaginated(ctx context.Context, arg ListCategoriesByUploaderPaginatedParams) ([]Category, error) {
-	rows, err := q.db.QueryContext(ctx, listCategoriesByUploaderPaginated, arg.UserID, arg.Limit, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, listCategoriesByUploaderPaginated, arg.Name, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -273,22 +290,27 @@ func (q *Queries) ListCategoriesPaginated(ctx context.Context, arg ListCategorie
 }
 
 const listUploaders = `-- name: ListUploaders :many
-SELECT user_id FROM category_users WHERE category_name = ?
+SELECT name, can_upload FROM category_users WHERE category_name = ?
 `
 
-func (q *Queries) ListUploaders(ctx context.Context, categoryName string) ([]string, error) {
+type ListUploadersRow struct {
+	Name      string
+	CanUpload int64
+}
+
+func (q *Queries) ListUploaders(ctx context.Context, categoryName string) ([]ListUploadersRow, error) {
 	rows, err := q.db.QueryContext(ctx, listUploaders, categoryName)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []ListUploadersRow{}
 	for rows.Next() {
-		var user_id string
-		if err := rows.Scan(&user_id); err != nil {
+		var i ListUploadersRow
+		if err := rows.Scan(&i.Name, &i.CanUpload); err != nil {
 			return nil, err
 		}
-		items = append(items, user_id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -300,15 +322,15 @@ func (q *Queries) ListUploaders(ctx context.Context, categoryName string) ([]str
 }
 
 const removeUploader = `-- name: RemoveUploader :exec
-DELETE FROM category_users WHERE category_name = ? AND user_id = ?
+DELETE FROM category_users WHERE category_name = ? AND name = ?
 `
 
 type RemoveUploaderParams struct {
 	CategoryName string
-	UserID       string
+	Name         string
 }
 
 func (q *Queries) RemoveUploader(ctx context.Context, arg RemoveUploaderParams) error {
-	_, err := q.db.ExecContext(ctx, removeUploader, arg.CategoryName, arg.UserID)
+	_, err := q.db.ExecContext(ctx, removeUploader, arg.CategoryName, arg.Name)
 	return err
 }

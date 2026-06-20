@@ -20,29 +20,29 @@ import (
 
 // SessionHandler handles session creation (login, share auth, token auth).
 type SessionHandler struct {
-	userStore      *model.UserStore
-	resourceStore  *model.ResourceStore
-	shareLinkStore *model.ShareLinkStore
-	categoryStore  *model.CategoryStore
-	sm             *scs.SessionManager
-	db             *sql.DB
+	userStore          *model.UserStore
+	resourceStore      *model.ResourceStore
+	shareResourceStore *model.ShareResourceStore
+	categoryStore      *model.CategoryStore
+	sm                 *scs.SessionManager
+	db                 *sql.DB
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, shareLinkStore *model.ShareLinkStore, categoryStore *model.CategoryStore, sm *scs.SessionManager, db *sql.DB) *SessionHandler {
+func NewSessionHandler(userStore *model.UserStore, resourceStore *model.ResourceStore, shareResourceStore *model.ShareResourceStore, categoryStore *model.CategoryStore, sm *scs.SessionManager, db *sql.DB) *SessionHandler {
 	return &SessionHandler{
-		userStore:      userStore,
-		resourceStore:  resourceStore,
-		shareLinkStore: shareLinkStore,
-		categoryStore:  categoryStore,
-		sm:             sm,
-		db:             db,
+		userStore:          userStore,
+		resourceStore:      resourceStore,
+		shareResourceStore: shareResourceStore,
+		categoryStore:      categoryStore,
+		sm:                 sm,
+		db:                 db,
 	}
 }
 
 type sessionRequest struct {
 	Type       string `json:"type"` // "user", "share", "token"
-	Username   string `json:"username,omitempty"`
+	Name       string `json:"name,omitempty"`
 	TOTPCode   string `json:"totp_code,omitempty"`
 	ResourceID string `json:"resource_id,omitempty"`
 	Password   string `json:"password,omitempty"`
@@ -71,37 +71,41 @@ func (h *SessionHandler) ServeSessionAPI(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *SessionHandler) handleUserSession(w http.ResponseWriter, r *http.Request, req sessionRequest) {
-	if req.Username == "" || req.TOTPCode == "" {
-		respondJSONError(w, "Username and authenticator code are required.", http.StatusBadRequest)
+	if req.Name == "" || req.TOTPCode == "" {
+		respondJSONError(w, "Name and authenticator code are required.", http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.userStore.GetByUsername(req.Username)
+	user, err := h.userStore.GetByName(req.Name)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			respondJSONError(w, "Invalid username or code.", http.StatusUnauthorized)
+			respondJSONError(w, "Invalid name or code.", http.StatusUnauthorized)
 			return
 		}
-		slog.Error("failed to lookup user", "username", req.Username, "error", err)
+		slog.Error("failed to lookup user", "name", req.Name, "error", err)
 		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	if !totp.Validate(req.TOTPCode, user.TotpSecret) {
-		respondJSONError(w, "Invalid username or code.", http.StatusUnauthorized)
+		respondJSONError(w, "Invalid name or code.", http.StatusUnauthorized)
 		return
 	}
 
-	middleware.SetUserSession(r.Context(), h.sm, user.ID, user.Role, user.Username)
-	slog.Info("user logged in via /api/session", "username", req.Username)
+	middleware.SetUserSession(r.Context(), h.sm, user.Name, user.IsAdmin)
+	slog.Info("user logged in via /api/session", "name", req.Name)
 
 	// Generate API token for Bearer auth on subsequent API calls.
 	apiToken := ""
 	tokenBytes := make([]byte, 32)
 	if _, randErr := rand.Read(tokenBytes); randErr == nil {
 		tokenStr := hex.EncodeToString(tokenBytes)
+		role := "uploader"
+		if user.IsAdmin {
+			role = "admin"
+		}
 		expiresAt := time.Now().UTC().Add(30 * time.Minute)
-		if dbErr := model.SaveAPIToken(h.db, tokenStr, user.ID, user.Role, user.Username, expiresAt); dbErr == nil {
+		if dbErr := model.SaveAPIToken(h.db, tokenStr, role, user.Name, expiresAt); dbErr == nil {
 			apiToken = tokenStr
 		} else {
 			slog.Error("failed to save API token", "error", dbErr)
@@ -111,10 +115,9 @@ func (h *SessionHandler) handleUserSession(w http.ResponseWriter, r *http.Reques
 	respondJSONOK(w, map[string]interface{}{
 		"ok":        true,
 		"api_token": apiToken,
-		"user": map[string]string{
-			"id":       user.ID,
-			"username": user.Username,
-			"role":     user.Role,
+		"user": map[string]interface{}{
+			"name":     user.Name,
+			"is_admin": user.IsAdmin,
 		},
 	})
 }
@@ -140,19 +143,19 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// NEW: If user is authenticated and has category access, auto-auth
+	// If user is authenticated and has category access, auto-auth
 	userID := middleware.GetUserID(r.Context(), h.sm)
 	if userID != "" && !model.IsPublic(resource.CategoryName) {
-		userRole := middleware.GetUserRole(r.Context(), h.sm)
+		isAdmin := middleware.GetIsAdmin(r.Context(), h.sm)
 		// Admin can access everything
-		if userRole == "admin" {
+		if isAdmin {
 			middleware.SetVideoAuth(r.Context(), h.sm)
 			respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
 			return
 		}
 		// Check if user is assigned to this category
-		authorized, err := h.categoryStore.IsUploaderAuthorized(userID, resource.CategoryName)
-		if err == nil && authorized {
+		assigned, err := h.categoryStore.IsAssigned(userID, resource.CategoryName)
+		if err == nil && assigned {
 			middleware.SetVideoAuth(r.Context(), h.sm)
 			respondJSONOK(w, map[string]interface{}{"ok": true, "redirect": "/#/v/" + req.ResourceID + "/watch"})
 			return
@@ -170,7 +173,8 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 			tok := strings.TrimPrefix(auth, "Bearer ")
 			if apiToken, err := model.GetAPIToken(h.db, tok); err == nil {
-				middleware.SetUserSession(r.Context(), h.sm, apiToken.UserID, apiToken.UserRole, apiToken.Username)
+				isAdmin := apiToken.UserRole == "admin"
+				middleware.SetUserSession(r.Context(), h.sm, apiToken.Name, isAdmin)
 			}
 		}
 
@@ -190,8 +194,8 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Validate against share_links table
-	if _, err := h.shareLinkStore.GetByResourceAndPassword(req.ResourceID, req.Password); err != nil {
+	// Validate against share_resources table
+	if _, err := h.shareResourceStore.GetByResourceAndPassword(req.ResourceID, req.Password); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			respondJSONError(w, "Invalid or expired link.", http.StatusUnauthorized)
 			return
@@ -210,7 +214,8 @@ func (h *SessionHandler) handleShareSession(w http.ResponseWriter, r *http.Reque
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		tok := strings.TrimPrefix(auth, "Bearer ")
 		if apiToken, err := model.GetAPIToken(h.db, tok); err == nil {
-			middleware.SetUserSession(r.Context(), h.sm, apiToken.UserID, apiToken.UserRole, apiToken.Username)
+			isAdmin := apiToken.UserRole == "admin"
+			middleware.SetUserSession(r.Context(), h.sm, apiToken.Name, isAdmin)
 		}
 	}
 
@@ -243,15 +248,15 @@ func (h *SessionHandler) handleTokenSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	middleware.SetUserSession(r.Context(), h.sm, apiToken.UserID, apiToken.UserRole, apiToken.Username)
-	slog.Info("session created from token", "user", apiToken.Username)
+	isAdmin := apiToken.UserRole == "admin"
+	middleware.SetUserSession(r.Context(), h.sm, apiToken.Name, isAdmin)
+	slog.Info("session created from token", "user", apiToken.Name)
 
 	respondJSONOK(w, map[string]interface{}{
 		"ok": true,
-		"user": map[string]string{
-			"id":       apiToken.UserID,
-			"username": apiToken.Username,
-			"role":     apiToken.UserRole,
+		"user": map[string]interface{}{
+			"name":     apiToken.Name,
+			"is_admin": isAdmin,
 		},
 	})
 }

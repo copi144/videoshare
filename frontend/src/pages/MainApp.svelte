@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { user } from '../stores/auth';
+  import { onMount, onDestroy } from 'svelte';
+  import { user, isAuthenticated, apiToken, checkAuth, startHeartbeat, stopHeartbeat } from '../stores/auth';
+  import { logout, setApiToken } from '../lib/api';
   import {
     listResources,
     uploadVideo,
@@ -10,6 +11,8 @@
     listCategories,
     listPlaylists,
     createShareLink,
+    listShareLinks,
+    deleteShareLink,
   } from '../lib/api';
   import TabHistory from './TabHistory.svelte';
   import Categories from './Categories.svelte';
@@ -17,6 +20,7 @@
   import Users from './Users.svelte';
   import ConfirmModal from '../components/ConfirmModal.svelte';
   import MarkdownEditor from '../components/MarkdownEditor.svelte';
+  import Login from './Login.svelte';
 
   // --- Types ---
 
@@ -51,7 +55,33 @@
 
   // --- Auth ---
 
-  $: userRole = $user?.role || '';
+  $: isAdmin = $user?.is_admin || false;
+
+  // --- Login modal ---
+
+  let showLoginModal = false;
+
+  async function handleLoginSuccess() {
+    showLoginModal = false;
+    await checkAuth();
+    startHeartbeat();
+    await loadAll();
+  }
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // Even if the API call fails, clear local state
+    }
+    setApiToken(null);
+    apiToken.set(null);
+    user.set(null);
+    isAuthenticated.set(false);
+    localStorage.removeItem('videoshare_api_token');
+    stopHeartbeat();
+    await loadAll();
+  }
 
   // --- Tab state ---
 
@@ -101,6 +131,15 @@
   $: if (createLinkExpiryMode === 'custom') {
     createLinkExpiry = createLinkCustomMinutes;
   }
+
+  // --- Manage Links modal ---
+
+  let manageLinkResourceId = '';
+  let showManageLinks = false;
+  let existingLinks: Array<{resource_id: string; password: string; expires_at: string | null; created_by: string; created_at: string}> = [];
+  let manageLinksLoading = false;
+  let manageLinksError: string | null = null;
+  let deleteLinkId: string | null = null;
 
   // --- File type filter (driven by top type selector) ---
   const videoAccept = 'video/mp4,video/webm,video/x-matroska,video/quicktime,video/x-msvideo,video/x-flv';
@@ -183,8 +222,16 @@
     }
   }
 
-  onMount(() => {
-    loadAll();
+  onMount(async () => {
+    await checkAuth();
+    if ($isAuthenticated) {
+      startHeartbeat();
+    }
+    await loadAll();
+  });
+
+  onDestroy(() => {
+    stopHeartbeat();
   });
 
   // --- Event handlers ---
@@ -387,11 +434,7 @@
     try {
       const result = await createShareLink(createLinkResourceId, createLinkExpiry);
       if (result.url) {
-        const fullUrl = `${window.location.origin}${result.url}`;
-        navigator.clipboard.writeText(fullUrl).then(
-          () => { createLinkUrl = result.url; },
-          () => { createLinkUrl = result.url; }
-        );
+        createLinkUrl = result.url;
       }
     } catch (e: unknown) {
       createLinkError = e instanceof Error ? e.message : 'Failed to create link.';
@@ -411,6 +454,48 @@
     createLinkResourceId = '';
     createLinkUrl = '';
     createLinkError = null;
+  }
+
+  async function openManageLinks(id: string) {
+    manageLinkResourceId = id;
+    showManageLinks = true;
+    manageLinksLoading = true;
+    manageLinksError = null;
+    try {
+      const data = await listShareLinks(id);
+      existingLinks = data.share_links;
+    } catch (e: unknown) {
+      manageLinksError = e instanceof Error ? e.message : 'Failed to load share links.';
+      existingLinks = [];
+    } finally {
+      manageLinksLoading = false;
+    }
+  }
+
+  function closeManageLinks() {
+    showManageLinks = false;
+    manageLinkResourceId = '';
+    existingLinks = [];
+    manageLinksError = null;
+    deleteLinkId = null;
+  }
+
+  async function handleDeleteLink(password: string) {
+    if (!manageLinkResourceId) return;
+    deleteLinkId = password;
+    try {
+      await deleteShareLink(manageLinkResourceId, password);
+      existingLinks = existingLinks.filter(l => l.password !== password);
+    } catch (e: unknown) {
+      manageLinksError = e instanceof Error ? e.message : 'Failed to delete link.';
+    } finally {
+      deleteLinkId = null;
+    }
+  }
+
+  function formatDateTime(iso: string | null): string {
+    if (!iso) return 'Never';
+    return new Date(iso).toLocaleString();
   }
 
   function formatSize(bytes: number): string {
@@ -488,7 +573,7 @@
       >
         Playlists
       </button>
-      {#if userRole === 'admin'}
+              {#if isAdmin}
         <button
           class="tab"
           class:active={activeTab === 'users'}
@@ -496,6 +581,14 @@
         >
           Users
         </button>
+      {/if}
+    </div>
+    <div class="user-section">
+      {#if $isAuthenticated}
+        <span class="username-label">{$user?.name}</span>
+        <button class="login-btn" on:click={handleLogout}>Logout</button>
+      {:else}
+        <button class="login-btn" on:click={() => { showLoginModal = true; }}>Login</button>
       {/if}
     </div>
   </nav>
@@ -531,7 +624,7 @@
               <button class="action-btn retranscode-all" on:click={handleBatchRetranscode}>
                 Re-transcode All
               </button>
-              {#if userRole === 'admin'}
+      {#if isAdmin}
                 <button class="action-btn ban-all" on:click={handleBatchBan}>
                   Ban All
                 </button>
@@ -540,9 +633,11 @@
                 Delete All
               </button>
             {/if}
+            {#if $isAuthenticated}
             <button class="action-btn select-btn" on:click={() => { selectMode = !selectMode; selectedIds = new Set(); }}>
               {selectMode ? 'Done' : 'Select'}
             </button>
+            {/if}
           </div>
         </div>
 
@@ -615,16 +710,26 @@
                           >
                             {copySuccess === res.id ? 'Link copied!' : 'Copy Link'}
                           </button>
-                        {:else}
-                          <button
-                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
-                            type="button"
-                            on:click={() => { openCreateLink(res.id); }}
-                          >
-                            Create Link
-                          </button>
+                        {:else if $isAuthenticated}
+                          <div class="flex gap-1">
+                            <button
+                              class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+                              type="button"
+                              on:click={() => { openCreateLink(res.id); }}
+                            >
+                              Create Link
+                            </button>
+                            <button
+                              class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+                              type="button"
+                              on:click={() => { openManageLinks(res.id); }}
+                            >
+                              Manage Links
+                            </button>
+                          </div>
                         {/if}
                       </td>
+        {#if $isAuthenticated}
                       <td class="py-2 actions-col">
                         <button
                           class="row-action-btn row-action-retranscode"
@@ -650,6 +755,7 @@
                           Delete
                         </button>
                       </td>
+                      {/if}
                     </tr>
                   {/each}
                 </tbody>
@@ -679,6 +785,7 @@
         </div>
 
         <!-- Upload form -->
+        {#if $isAuthenticated}
         <div class="mt-6">
           <form on:submit|preventDefault={handleUpload} class="upload-form">
             <div class="upload-row-title">
@@ -726,11 +833,12 @@
             </button>
           </form>
         </div>
+        {/if}
 
       {:else if activeTab === 'history'}
         <TabHistory />
 
-      {:else if activeTab === 'users' && userRole === 'admin'}
+      {:else if activeTab === 'users' && isAdmin}
         <div class="users-section">
           <Users onError={setError} />
         </div>
@@ -810,6 +918,72 @@
                 </div>
               </div>
             {/if}
+          </div>
+        </div>
+      {/if}
+
+      {#if showManageLinks}
+        <!-- Overlay -->
+        <div class="fixed inset-0 bg-black/30 z-40" on:click={closeManageLinks}></div>
+        <!-- Modal -->
+        <div class="fixed inset-0 flex items-center justify-center z-50">
+          <div class="rounded-lg border border-gray-200 bg-white p-6 max-w-lg w-full shadow-xl mx-4">
+            <h3 class="text-base font-semibold text-gray-900 mb-3">Share Links for {manageLinkResourceId}</h3>
+            
+            {#if manageLinksError}
+              <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 mb-3">{manageLinksError}</div>
+            {/if}
+
+            {#if manageLinksLoading}
+              <p class="text-sm text-gray-500 mb-4">Loading share links…</p>
+            {:else if existingLinks.length === 0}
+              <p class="text-sm text-gray-500 mb-4">No share links created yet.</p>
+            {:else}
+              <div class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                {#each existingLinks as link}
+                  <div class="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm">
+                    <div class="flex-1 min-w-0">
+                      <div class="text-gray-900 font-mono truncate">{link.password.slice(0, 8)}...</div>
+                      <div class="text-gray-500">Expires: {formatDateTime(link.expires_at)}</div>
+                      <div class="text-gray-500">Created: {formatDateTime(link.created_at)}</div>
+                    </div>
+                    <button
+                      class="inline-flex items-center px-2 py-1 border border-red-300 rounded-md text-xs text-red-600 bg-white hover:bg-red-50 disabled:opacity-50 ml-3 flex-shrink-0"
+                      type="button"
+                      disabled={deleteLinkId === link.password}
+                      on:click={() => { handleDeleteLink(link.password); }}
+                    >
+                      {deleteLinkId === link.password ? 'Deleting…' : 'Cancel'}
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
+            <div class="flex justify-end border-t border-gray-100 pt-3">
+              <button
+                class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"
+                type="button"
+                on:click={closeManageLinks}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      {#if showLoginModal}
+        <!-- Overlay -->
+        <div class="fixed inset-0 bg-black/30 z-40" on:click={() => { showLoginModal = false; }}></div>
+        <!-- Modal -->
+        <div class="fixed inset-0 flex items-center justify-center z-50">
+          <div class="rounded-lg border border-gray-200 bg-white p-6 max-w-sm w-full shadow-xl mx-4">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-lg font-semibold text-gray-900">Login</h2>
+              <button class="text-gray-400 hover:text-gray-600 text-xl leading-none" on:click={() => { showLoginModal = false; }}>&times;</button>
+            </div>
+            <Login onSuccess={handleLoginSuccess} />
           </div>
         </div>
       {/if}
@@ -1116,5 +1290,32 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border-width: 0;
+  }
+
+  .user-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+
+  .username-label {
+    font-size: 0.85rem;
+    color: #6b7280;
+  }
+
+  .login-btn {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .login-btn:hover {
+    background: #f3f4f6;
   }
 </style>

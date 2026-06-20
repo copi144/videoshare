@@ -46,7 +46,7 @@ func main() {
 		// First boot — display TOTP setup credentials in terminal.
 		fmt.Println("\n═══════════════════════════════════════════")
 		fmt.Println("  Admin Account Created!")
-		fmt.Printf("  Username: %s\n", cfg.AdminUsername)
+		fmt.Printf("  Name: %s\n", cfg.AdminUsername)
 		fmt.Println("  Scan the QR code below with your")
 		fmt.Println("  authenticator app (Google Authenticator, Authy, etc.)")
 		fmt.Println("  Or enter the URI manually in your browser")
@@ -57,11 +57,11 @@ func main() {
 	}
 
 	// Bootstrap the global category (public/no-password videos).
-	globalAdminID, err := model.GetAdminUserID(db)
+	adminName, err := model.GetAdminName(db)
 	if err != nil {
-		slog.Error("failed to lookup admin user ID for global category bootstrap", "error", err)
+		slog.Error("failed to lookup admin name for global category bootstrap", "error", err)
 	} else {
-		if err := model.BootstrapGlobalCategory(db, globalAdminID); err != nil {
+		if err := model.BootstrapGlobalCategory(db, adminName); err != nil {
 			slog.Error("failed to bootstrap global category", "error", err)
 		}
 	}
@@ -85,31 +85,31 @@ func main() {
 	// Check for TOTP reset file
 	resetPath := filepath.Join(cfg.DataDir, "reset-admin-totp.txt")
 	if data, err := os.ReadFile(resetPath); err == nil {
-		adminUsername := strings.TrimSpace(string(data))
-		if adminUsername == "" {
-			adminUsername = cfg.AdminUsername
+		adminName := strings.TrimSpace(string(data))
+		if adminName == "" {
+			adminName = cfg.AdminUsername
 		}
 
-		// Find the admin user by username
-		adminUser, err := userStore.GetByUsername(adminUsername)
+		// Find the admin user by name
+		adminUser, err := userStore.GetByName(adminName)
 		if err != nil {
-			slog.Error("failed to find admin user for TOTP reset", "username", adminUsername, "error", err)
+			slog.Error("failed to find admin user for TOTP reset", "name", adminName, "error", err)
 		} else {
 			key, err := totp.Generate(totp.GenerateOpts{
 				Issuer:      "VideoShare",
-				AccountName: adminUser.Username,
+				AccountName: adminUser.Name,
 			})
 			if err != nil {
 				slog.Error("failed to generate TOTP key for reset", "error", err)
 			} else {
 				// Update TOTP secret directly
-				_, err := db.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", key.Secret(), adminUser.ID)
+				_, err := db.Exec("UPDATE users SET totp_secret = ? WHERE name = ?", key.Secret(), adminUser.Name)
 				if err != nil {
 					slog.Error("failed to reset TOTP secret", "error", err)
 				} else {
 					fmt.Println("\n═══════════════════════════════════════════")
 					fmt.Println("  Admin TOTP Reset!")
-					fmt.Printf("  Username: %s\n", adminUsername)
+					fmt.Printf("  Name: %s\n", adminName)
 					fmt.Println("  Scan the QR code below with your")
 					fmt.Println("  authenticator app")
 					fmt.Printf("  TOTP URI: %s\n", key.URL())
@@ -134,10 +134,12 @@ func main() {
 	// Reset stalled 'processing' jobs to 'pending' on startup.
 	transcode.StartupRecovery(resourceStore)
 
+	shareResourceStore := model.NewShareResourceStore(db)
 	shareLinkStore := model.NewShareLinkStore(db)
-	router, rateLimitStops := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, shareLinkStore, tq, cfg.FFmpegPath)
+	router, rateLimitStops := handler.NewRouter(sm, resourceStore, cfg.DataDir, db, userStore, categoryStore, playlistStore, shareResourceStore, shareLinkStore, tq, cfg.FFmpegPath)
 
 	// Start cleanup goroutines
+	shareResourceStore.StartCleanup()
 	shareLinkStore.StartCleanup()
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
@@ -179,6 +181,7 @@ func main() {
 
 		tq.Shutdown()
 		sessStore.StopCleanup()
+		shareResourceStore.StopCleanup()
 		shareLinkStore.StopCleanup()
 		for _, stopFn := range rateLimitStops {
 			stopFn()
@@ -193,6 +196,7 @@ func main() {
 		// run ordered cleanup on early listen error (e.g. bind) so we exit cleanly
 		tq.Shutdown()
 		sessStore.StopCleanup()
+		shareResourceStore.StopCleanup()
 		shareLinkStore.StopCleanup()
 		for _, stopFn := range rateLimitStops {
 			stopFn()

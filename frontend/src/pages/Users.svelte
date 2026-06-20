@@ -5,21 +5,20 @@
   export let onError: ((msg: string) => void) | undefined = undefined;
 
   interface User {
-    id: string;
-    username: string;
+    name: string;
     display_name: string;
-    role: string;
+    is_admin: boolean;
     created_at: string;
   }
 
   let users: User[] = [];
   let loading = true;
-  let username = '';
+  let name = '';
   let displayName = '';
-  let role = 'uploader';
+  let isAdmin = false;
   let creating = false;
 
-  let totpResult: { username: string; totp_secret: string; totp_uri: string; qr_image: string } | null = null;
+  let totpResult: { name: string; totp_secret: string; totp_uri: string; qr_image: string } | null = null;
 
   onMount(loadUsers);
 
@@ -38,23 +37,23 @@
 
   async function handleCreate() {
     totpResult = null;
-    if (!username.trim()) {
-      onError?.('Username is required.');
+    if (!name.trim()) {
+      onError?.('Name is required.');
       return;
     }
     creating = true;
     try {
-      const result = await createUser(username.trim(), role, displayName.trim());
+      const result = await createUser(name.trim(), isAdmin, displayName.trim());
       if (result.ok) {
         totpResult = {
-          username: username.trim(),
+          name: name.trim(),
           totp_secret: result.totp_secret,
           totp_uri: result.totp_uri,
           qr_image: result.qr_image,
         };
-        username = '';
+        name = '';
         displayName = '';
-        role = 'uploader';
+        isAdmin = false;
         await loadUsers();
       }
     } catch (e: unknown) {
@@ -65,14 +64,14 @@
     }
   }
 
-  async function handleDelete(id: string, username: string) {
-    if (username === 'admin') {
+  async function handleDelete(userName: string) {
+    if (userName === 'admin') {
       onError?.('Cannot delete the root admin user.');
       return;
     }
-    if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete user "${userName}"? This cannot be undone.`)) return;
     try {
-      await deleteUser(id);
+      await deleteUser(userName);
       await loadUsers();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to delete user.';
@@ -80,13 +79,13 @@
     }
   }
 
-  async function handleResetTOTP(id: string, username: string) {
-    if (!confirm(`Reset TOTP for "${username}"? The user will need to reconfigure their authenticator app.`)) return;
+  async function handleResetTOTP(userName: string) {
+    if (!confirm(`Reset TOTP for "${userName}"? The user will need to reconfigure their authenticator app.`)) return;
     try {
-      const result = await resetTOTP(id);
+      const result = await resetTOTP(userName);
       if (result.ok) {
         totpResult = {
-          username,
+          name: userName,
           totp_secret: result.totp_secret,
           totp_uri: result.totp_uri,
           qr_image: result.qr_image,
@@ -103,7 +102,7 @@
   <!-- TOTP Result -->
   {#if totpResult}
     <div class="rounded-lg border border-gray-200 bg-white p-4">
-      <h2 class="text-base font-semibold text-gray-900 mb-1">TOTP Setup: {totpResult.username}</h2>
+      <h2 class="text-base font-semibold text-gray-900 mb-1">TOTP Setup: {totpResult.name}</h2>
       <p class="text-sm text-gray-500 mb-3">Share this information with the user. It will not be shown again.</p>
       {#if totpResult.qr_image}
         <div class="mb-3">
@@ -135,9 +134,9 @@
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-b border-gray-200">
-            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Username</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Name</th>
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Display Name</th>
-            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Role</th>
+            <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Admin</th>
             <th class="py-2 pr-4 text-xs font-medium text-gray-500 uppercase">Created</th>
             <th class="py-2 text-xs font-medium text-gray-500 uppercase">Actions</th>
           </tr>
@@ -145,17 +144,19 @@
         <tbody>
           {#each users as u}
             <tr class="border-b border-gray-100">
-              <td class="py-2 pr-4">{u.username}</td>
+              <td class="py-2 pr-4">{u.name}</td>
               <td class="py-2 pr-4 text-gray-500">{u.display_name || '—'}</td>
               <td class="py-2 pr-4">
-                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {u.role === 'admin' ? 'bg-red-100 text-red-700' : u.role === 'uploader' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}">
-                  {u.role}
-                </span>
+                {#if u.is_admin}
+                  <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Yes</span>
+                {:else}
+                  <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">No</span>
+                {/if}
               </td>
               <td class="py-2 pr-4 text-gray-500">{new Date(u.created_at).toLocaleDateString()}</td>
               <td class="py-2">
-                <button class="row-action-btn" type="button" on:click={() => handleResetTOTP(u.id, u.username)}>Reset TOTP</button>
-                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(u.id, u.username)} disabled={u.username === 'admin'}>Delete</button>
+                <button class="row-action-btn" type="button" on:click={() => handleResetTOTP(u.name)}>Reset TOTP</button>
+                <button class="row-action-btn row-action-delete" type="button" on:click={() => handleDelete(u.name)} disabled={u.name === 'admin'}>Delete</button>
               </td>
             </tr>
           {/each}
@@ -169,20 +170,18 @@
     <h2 class="text-base font-semibold text-gray-900 mb-3">Create User</h2>
     <form on:submit|preventDefault={handleCreate} class="space-y-3">
       <div>
-        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-        <input type="text" id="username" bind:value={username} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
+        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+        <input type="text" id="name" bind:value={name} required pattern="[0-9A-Za-z\-]+" title="Letters, numbers, and hyphens only" class="w-full" />
       </div>
       <div>
         <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
         <input type="text" id="display_name" bind:value={displayName} class="w-full" />
       </div>
       <div>
-        <label for="role" class="block text-sm font-medium text-gray-700 mb-1">Role</label>
-        <select id="role" bind:value={role} class="w-full">
-          <option value="uploader">Uploader (can upload to assigned categories)</option>
-          <option value="admin">Admin (full access)</option>
-          <option value="user">User (can browse, cannot upload)</option>
-        </select>
+        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+          <input type="checkbox" bind:checked={isAdmin} />
+          Admin (full access)
+        </label>
       </div>
       <button type="submit" disabled={creating} aria-busy={creating} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
         {creating ? 'Creating…' : 'Create User'}

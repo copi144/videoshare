@@ -1,9 +1,7 @@
 package handler
 
 import (
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -14,33 +12,40 @@ import (
 	"videoshare/model"
 )
 
-// ShareLinkHandler handles CRUD for ephemeral share links.
+// ShareLinkHandler handles CRUD for category/playlist share links.
 type ShareLinkHandler struct {
-	shareLinkStore *model.ShareLinkStore
-	resourceStore  *model.ResourceStore
+	store         *model.ShareLinkStore
+	categoryStore *model.CategoryStore
+	playlistStore *model.PlaylistStore
 }
 
 // NewShareLinkHandler creates a new ShareLinkHandler.
-func NewShareLinkHandler(shareLinkStore *model.ShareLinkStore, resourceStore *model.ResourceStore) *ShareLinkHandler {
+func NewShareLinkHandler(store *model.ShareLinkStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore) *ShareLinkHandler {
 	return &ShareLinkHandler{
-		shareLinkStore: shareLinkStore,
-		resourceStore:  resourceStore,
+		store:         store,
+		categoryStore: categoryStore,
+		playlistStore: playlistStore,
 	}
 }
 
-// CreateShareLinkAPI creates a new share link for a resource.
+// CreateAPI creates a new share link for a category or playlist.
 // POST /api/share-links
-func (h *ShareLinkHandler) CreateShareLinkAPI(w http.ResponseWriter, r *http.Request) {
+func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ResourceID       string `json:"resource_id"`
+		TargetType       string `json:"target_type"`
+		TargetID         string `json:"target_id"`
 		ExpiresInMinutes int    `json:"expires_in_minutes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.ResourceID == "" {
-		respondJSONError(w, "Resource ID is required", http.StatusBadRequest)
+	if req.TargetType != "category" && req.TargetType != "playlist" {
+		respondJSONError(w, "target_type must be 'category' or 'playlist'", http.StatusBadRequest)
+		return
+	}
+	if req.TargetID == "" {
+		respondJSONError(w, "target_id is required", http.StatusBadRequest)
 		return
 	}
 	if req.ExpiresInMinutes < 1 || req.ExpiresInMinutes > 525600 {
@@ -48,88 +53,87 @@ func (h *ShareLinkHandler) CreateShareLinkAPI(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Verify resource exists
-	resource, err := h.resourceStore.GetByID(req.ResourceID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			respondJSONError(w, "Resource not found", http.StatusNotFound)
+	// Verify target exists
+	if req.TargetType == "category" {
+		if _, err := h.categoryStore.GetByName(req.TargetID); err != nil {
+			respondJSONError(w, "Category not found", http.StatusNotFound)
 			return
 		}
-		slog.Error("failed to lookup resource", "id", req.ResourceID, "error", err)
-		respondJSONError(w, "Internal error", http.StatusInternalServerError)
-		return
+	} else {
+		if _, err := h.playlistStore.GetByID(req.TargetID); err != nil {
+			respondJSONError(w, "Playlist not found", http.StatusNotFound)
+			return
+		}
 	}
-	_ = resource // resource exists, proceed
 
-	// Generate ID and password
 	id, err := model.GenerateShareLinkID()
 	if err != nil {
 		slog.Error("failed to generate share link ID", "error", err)
 		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
-	password, err := model.GenerateShareLinkPassword()
+	password, err := model.GenerateShareLinkID()
 	if err != nil {
-		slog.Error("failed to generate password", "error", err)
+		slog.Error("failed to generate share link password", "error", err)
 		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
-	// Compute expiry (always set — required)
 	t := time.Now().UTC().Add(time.Duration(req.ExpiresInMinutes) * time.Minute)
-	expiresAt := &t
-
 	userID := middleware.GetUserIDFromContext(r.Context())
 	now := time.Now().UTC()
 
 	link := &model.ShareLink{
 		ID:         id,
-		ResourceID: req.ResourceID,
 		Password:   password,
-		ExpiresAt:  expiresAt,
+		TargetType: req.TargetType,
+		TargetID:   req.TargetID,
+		ExpiresAt:  &t,
 		CreatedBy:  userID,
 		CreatedAt:  now,
 	}
 
-	if err := h.shareLinkStore.Create(link); err != nil {
+	if err := h.store.Create(link); err != nil {
 		slog.Error("failed to create share link", "error", err)
 		respondJSONError(w, "Failed to create share link", http.StatusInternalServerError)
 		return
 	}
 
-	// Build the share URL
-	url := "/#/v/" + req.ResourceID + "/" + password
+	url := "/#/s/" + id + "/" + password
 
-	slog.Info("share link created", "resource_id", req.ResourceID, "expires_in_minutes", req.ExpiresInMinutes)
+	slog.Info("share link created", "target_type", req.TargetType, "target_id", req.TargetID)
 	respondJSONOK(w, map[string]interface{}{
-		"ok":         true,
-		"url":        url,
-		"id":         id,
-		"password":   password,
-		"expires_at": expiresAt,
+		"ok":          true,
+		"url":         url,
+		"id":          id,
+		"password":    password,
+		"target_type": req.TargetType,
+		"target_id":   req.TargetID,
+		"expires_at":  t,
 	})
 }
 
-// ListShareLinksAPI lists share links for a resource.
-// GET /api/share-links?resource_id=xxx
-func (h *ShareLinkHandler) ListShareLinksAPI(w http.ResponseWriter, r *http.Request) {
-	resourceID := r.URL.Query().Get("resource_id")
-	if resourceID == "" {
-		respondJSONError(w, "resource_id is required", http.StatusBadRequest)
+// ListAPI lists share links for a target (category/playlist).
+// GET /api/share-links?target_type=xxx&target_id=xxx
+func (h *ShareLinkHandler) ListAPI(w http.ResponseWriter, r *http.Request) {
+	targetType := r.URL.Query().Get("target_type")
+	targetID := r.URL.Query().Get("target_id")
+	if targetType == "" || targetID == "" {
+		respondJSONError(w, "target_type and target_id are required", http.StatusBadRequest)
 		return
 	}
 
-	links, err := h.shareLinkStore.ListByResource(resourceID)
+	links, err := h.store.ListByTarget(targetType, targetID)
 	if err != nil {
-		slog.Error("failed to list share links", "resource_id", resourceID, "error", err)
+		slog.Error("failed to list share links", "target_type", targetType, "target_id", targetID, "error", err)
 		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
-	// Don't expose passwords in listing
 	type linkInfo struct {
 		ID         string     `json:"id"`
-		ResourceID string     `json:"resource_id"`
+		TargetType string     `json:"target_type"`
+		TargetID   string     `json:"target_id"`
 		ExpiresAt  *time.Time `json:"expires_at"`
 		CreatedBy  string     `json:"created_by"`
 		CreatedAt  time.Time  `json:"created_at"`
@@ -138,32 +142,78 @@ func (h *ShareLinkHandler) ListShareLinksAPI(w http.ResponseWriter, r *http.Requ
 	for _, l := range links {
 		result = append(result, linkInfo{
 			ID:         l.ID,
-			ResourceID: l.ResourceID,
+			TargetType: l.TargetType,
+			TargetID:   l.TargetID,
 			ExpiresAt:  l.ExpiresAt,
 			CreatedBy:  l.CreatedBy,
 			CreatedAt:  l.CreatedAt,
 		})
 	}
 
-	respondJSONOK(w, map[string]interface{}{
-		"share_links": result,
-	})
+	respondJSONOK(w, map[string]interface{}{"share_links": result})
 }
 
-// DeleteShareLinkAPI deletes a share link.
+// DeleteAPI deletes a share link by ID.
 // DELETE /api/share-links/{id}
-func (h *ShareLinkHandler) DeleteShareLinkAPI(w http.ResponseWriter, r *http.Request) {
+func (h *ShareLinkHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondJSONError(w, "Share link ID is required", http.StatusBadRequest)
+		return
+	}
+	if err := h.store.Delete(id); err != nil {
+		slog.Error("failed to delete share link", "id", id, "error", err)
+		respondJSONError(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	respondJSONOK(w, map[string]interface{}{"ok": true})
+}
+
+// AuthenticateAPI authenticates a share link via id + password (public endpoint).
+// POST /api/share-links/{id}/auth
+func (h *ShareLinkHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		respondJSONError(w, "Share link ID is required", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.shareLinkStore.Delete(id); err != nil {
-		slog.Error("failed to delete share link", "id", id, "error", err)
-		respondJSONError(w, "Internal error", http.StatusInternalServerError)
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Password == "" {
+		respondJSONError(w, "Password is required", http.StatusBadRequest)
 		return
 	}
 
-	respondJSONOK(w, map[string]interface{}{"ok": true})
+	link, err := h.store.GetByID(id)
+	if err != nil {
+		respondJSONError(w, "Invalid or expired share link", http.StatusUnauthorized)
+		return
+	}
+
+	if link.Password != req.Password {
+		respondJSONError(w, "Invalid password", http.StatusUnauthorized)
+		return
+	}
+
+	// Auth successful — determine redirect
+	var redirect string
+	if link.TargetType == "category" {
+		redirect = "/#/admin/categories?category=" + link.TargetID
+	} else {
+		redirect = "/#/admin/playlists?playlist=" + link.TargetID
+	}
+
+	slog.Info("share link authenticated", "id", id, "target_type", link.TargetType, "target_id", link.TargetID)
+	respondJSONOK(w, map[string]interface{}{
+		"ok":          true,
+		"redirect":    redirect,
+		"target_type": link.TargetType,
+		"target_id":   link.TargetID,
+	})
 }

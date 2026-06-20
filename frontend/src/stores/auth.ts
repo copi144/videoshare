@@ -2,9 +2,8 @@ import { writable } from 'svelte/store';
 import { checkMe, setApiToken, getApiToken, heartbeat } from '../lib/api';
 
 export interface UserInfo {
-  id: string;
-  username: string;
-  role: string;
+  name: string;
+  is_admin: boolean;
 }
 
 export const user = writable<UserInfo | null>(null);

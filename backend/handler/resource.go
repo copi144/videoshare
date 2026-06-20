@@ -62,28 +62,22 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := r.FormValue("title")
-	categoryID := r.FormValue("category_id")
+	categoryName := r.FormValue("category_id")
 	readme := r.FormValue("readme")
 	noTranscode := r.FormValue("no_transcode") == "1"
 
 	// Category is required.
-	if categoryID == "" {
+	if categoryName == "" {
 		respondError(w, r, http.StatusBadRequest, "Category is required")
 		return
 	}
 
 	userID := middleware.GetUserIDFromContext(r.Context())
-	userRole := middleware.GetUserRoleFromContext(r.Context())
-
-	// Users with the "user" role are not allowed to upload.
-	if userRole == "user" {
-		respondError(w, r, http.StatusForbidden, "User role is not allowed to upload")
-		return
-	}
+	isAdmin := middleware.GetIsAdminFromContext(r.Context())
 
 	// Non-admin users: verify authorization for non-global categories.
-	if userRole != "admin" && !model.IsPublic(categoryID) {
-		authorized, authErr := h.categoryStore.IsUploaderAuthorized(userID, categoryID)
+	if !isAdmin && !model.IsPublic(categoryName) {
+		authorized, authErr := h.categoryStore.CanUpload(userID, categoryName)
 		if authErr != nil {
 			slog.Error("failed to check category authorization", "error", authErr)
 			respondError(w, r, http.StatusInternalServerError, "Authorization error")
@@ -238,7 +232,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		ContentType:  contentType,
 		ResourceType: resourceType,
 		UploadedBy:   userID,
-		CategoryName: categoryID,
+		CategoryName: categoryName,
 		NoTranscode:  noTranscode,
 	}
 
@@ -283,7 +277,7 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 // ListResourcesAPI returns all resources as JSON (for populating dropdowns).
 // GET /api/resources
 func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Request) {
-	userRole := middleware.GetUserRoleFromContext(r.Context())
+	isAdmin := middleware.GetIsAdminFromContext(r.Context())
 	userID := middleware.GetUserIDFromContext(r.Context())
 
 	// Parse pagination parameters at the boundary.
@@ -319,7 +313,7 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 	var err error
 	resourceType := r.URL.Query().Get("resource_type")
 	if resourceType != "" {
-		if userRole == "admin" {
+		if isAdmin {
 			resources, err = h.store.ListByTypePaginated(resourceType, limit, offset)
 			if err == nil {
 				total, err = h.store.CountByType(resourceType)
@@ -330,7 +324,7 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 				total, err = h.store.CountByTypeAndUploader(resourceType, userID)
 			}
 		}
-	} else if userRole == "admin" {
+	} else if isAdmin {
 		resources, err = h.store.ListPaginated(limit, offset)
 		if err == nil {
 			total, err = h.store.Count()
@@ -348,7 +342,7 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Filter banned resources for non-admin users
-	if userRole != "admin" {
+	if !isAdmin {
 		filtered := make([]*model.Resource, 0, len(resources))
 		for _, res := range resources {
 			if !res.Banned {
@@ -431,8 +425,8 @@ func (h *ResourceHandler) DeleteResourceAPI(w http.ResponseWriter, r *http.Reque
 
 	// Ownership check: admin can delete anything; uploader can delete own.
 	userID := middleware.GetUserIDFromContext(r.Context())
-	userRole := middleware.GetUserRoleFromContext(r.Context())
-	if userRole != "admin" && resource.UploadedBy != userID {
+	isAdmin := middleware.GetIsAdminFromContext(r.Context())
+	if !isAdmin && resource.UploadedBy != userID {
 		respondError(w, r, http.StatusForbidden, "You can only delete your own videos")
 		return
 	}
@@ -517,8 +511,8 @@ func (h *ResourceHandler) Retranscode(w http.ResponseWriter, r *http.Request) {
 
 	// Check ownership
 	userID := middleware.GetUserIDFromContext(r.Context())
-	userRole := middleware.GetUserRoleFromContext(r.Context())
-	if userRole != "admin" && resource.UploadedBy != userID {
+	isAdmin := middleware.GetIsAdminFromContext(r.Context())
+	if !isAdmin && resource.UploadedBy != userID {
 		respondError(w, r, http.StatusForbidden, "You can only retranscode your own videos")
 		return
 	}
@@ -552,8 +546,8 @@ func (h *ResourceHandler) BanResource(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Admin only check
-	userRole := middleware.GetUserRoleFromContext(r.Context())
-	if userRole != "admin" {
+	isAdmin := middleware.GetIsAdminFromContext(r.Context())
+	if !isAdmin {
 		respondError(w, r, http.StatusForbidden, "Admin access required")
 		return
 	}

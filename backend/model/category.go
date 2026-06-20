@@ -16,19 +16,14 @@ func IsValidName(name string) bool {
 	return validName.MatchString(name)
 }
 
-// IsGlobal reports whether the given category ID is the special Global category.
-func IsGlobal(categoryID string) bool {
-	return IsGlobalCategoryID(categoryID)
+// IsGlobal reports whether the given category name is the special Global category.
+func IsGlobal(categoryName string) bool {
+	return IsGlobalCategoryName(categoryName)
 }
 
 // IsPublic reports whether videos in this category are publicly accessible without a password.
-func IsPublic(categoryID string) bool {
-	return IsGlobal(categoryID)
-}
-
-// RequiresPassword reports whether this category is non-global (requires authorization or share link).
-func RequiresPassword(categoryID string) bool {
-	return !IsGlobal(categoryID)
+func IsPublic(categoryName string) bool {
+	return IsGlobal(categoryName)
 }
 
 // Category represents a video category.
@@ -62,10 +57,10 @@ func (s *CategoryStore) Insert(c *Category) error {
 	})
 }
 
-// GetByID retrieves a category by ID.
-func (s *CategoryStore) GetByID(id string) (*Category, error) {
+// GetByName retrieves a category by name.
+func (s *CategoryStore) GetByName(name string) (*Category, error) {
 	ctx := context.Background()
-	c, err := s.q.GetCategory(ctx, id)
+	c, err := s.q.GetCategory(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -99,9 +94,9 @@ func (s *CategoryStore) List() ([]*Category, error) {
 }
 
 // ListByUploader returns categories that a specific uploader is assigned to.
-func (s *CategoryStore) ListByUploader(userID string) ([]*Category, error) {
+func (s *CategoryStore) ListByUploader(name string) ([]*Category, error) {
 	ctx := context.Background()
-	items, err := s.q.ListCategoriesByUploader(ctx, userID)
+	items, err := s.q.ListCategoriesByUploader(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -149,10 +144,10 @@ func (s *CategoryStore) Count() (int, error) {
 }
 
 // ListByUploaderPaginated returns a page of categories that a specific uploader is assigned to.
-func (s *CategoryStore) ListByUploaderPaginated(userID string, limit, offset int) ([]*Category, error) {
+func (s *CategoryStore) ListByUploaderPaginated(name string, limit, offset int) ([]*Category, error) {
 	ctx := context.Background()
 	items, err := s.q.ListCategoriesByUploaderPaginated(ctx, database.ListCategoriesByUploaderPaginatedParams{
-		UserID: userID,
+		Name:   name,
 		Limit:  int64(limit),
 		Offset: int64(offset),
 	})
@@ -173,14 +168,14 @@ func (s *CategoryStore) ListByUploaderPaginated(userID string, limit, offset int
 }
 
 // CountByUploader returns the total number of categories that a specific uploader is assigned to.
-func (s *CategoryStore) CountByUploader(userID string) (int, error) {
+func (s *CategoryStore) CountByUploader(name string) (int, error) {
 	ctx := context.Background()
-	count, err := s.q.CountCategoriesByUploader(ctx, userID)
+	count, err := s.q.CountCategoriesByUploader(ctx, name)
 	return int(count), err
 }
 
 // AssignUploaders sets the uploaders for a category (replaces all existing).
-func (s *CategoryStore) AssignUploaders(categoryID string, userIDs []string) error {
+func (s *CategoryStore) AssignUploaders(categoryName string, names []string) error {
 	ctx := context.Background()
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -189,13 +184,14 @@ func (s *CategoryStore) AssignUploaders(categoryID string, userIDs []string) err
 	defer tx.Rollback()
 
 	qtx := s.q.WithTx(tx)
-	if err := qtx.ClearCategoryUploaders(ctx, categoryID); err != nil {
+	if err := qtx.ClearCategoryUploaders(ctx, categoryName); err != nil {
 		return err
 	}
-	for _, uid := range userIDs {
+	for _, n := range names {
 		if err := qtx.AddUploader(ctx, database.AddUploaderParams{
-			CategoryName: categoryID,
-			UserID:       uid,
+			CategoryName: categoryName,
+			Name:         n,
+			CanUpload:    0,
 		}); err != nil {
 			return err
 		}
@@ -203,18 +199,31 @@ func (s *CategoryStore) AssignUploaders(categoryID string, userIDs []string) err
 	return tx.Commit()
 }
 
-// GetUploaders returns user IDs assigned to a category.
-func (s *CategoryStore) GetUploaders(categoryID string) ([]string, error) {
+// GetUploaders returns uploaders assigned to a category.
+func (s *CategoryStore) GetUploaders(categoryName string) ([]database.ListUploadersRow, error) {
 	ctx := context.Background()
-	return s.q.ListUploaders(ctx, categoryID)
+	return s.q.ListUploaders(ctx, categoryName)
 }
 
-// IsUploaderAuthorized checks if a user is assigned to upload to a category.
-func (s *CategoryStore) IsUploaderAuthorized(userID, categoryID string) (bool, error) {
+// CanUpload checks if a user is authorized to upload to a category.
+func (s *CategoryStore) CanUpload(userName, categoryName string) (bool, error) {
 	ctx := context.Background()
-	count, err := s.q.IsUploaderAuthorized(ctx, database.IsUploaderAuthorizedParams{
-		CategoryName: categoryID,
-		UserID:       userID,
+	count, err := s.q.CanUpload(ctx, database.CanUploadParams{
+		CategoryName: categoryName,
+		Name:         userName,
+	})
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// IsAssigned checks if a user is assigned to a category (regardless of can_upload).
+func (s *CategoryStore) IsAssigned(userName, categoryName string) (bool, error) {
+	ctx := context.Background()
+	count, err := s.q.IsAssigned(ctx, database.IsAssignedParams{
+		CategoryName: categoryName,
+		Name:         userName,
 	})
 	if err != nil {
 		return false, err
@@ -223,14 +232,14 @@ func (s *CategoryStore) IsUploaderAuthorized(userID, categoryID string) (bool, e
 }
 
 // GetVideoCount returns the number of resources in a given category.
-func (s *CategoryStore) GetVideoCount(categoryID string) (int, error) {
+func (s *CategoryStore) GetVideoCount(categoryName string) (int, error) {
 	ctx := context.Background()
-	count, err := s.q.GetCategoryVideoCount(ctx, sql.NullString{String: categoryID, Valid: categoryID != ""})
+	count, err := s.q.GetCategoryVideoCount(ctx, sql.NullString{String: categoryName, Valid: categoryName != ""})
 	return int(count), err
 }
 
 // Delete removes a category.
-func (s *CategoryStore) Delete(id string) error {
+func (s *CategoryStore) Delete(name string) error {
 	ctx := context.Background()
-	return s.q.DeleteCategory(ctx, id)
+	return s.q.DeleteCategory(ctx, name)
 }

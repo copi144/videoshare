@@ -1,20 +1,17 @@
 -- name: GetUser :one
-SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE id = ?;
-
--- name: GetUserByUsername :one
-SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE username = ?;
+SELECT name, totp_secret, display_name, is_admin, created_at FROM users WHERE name = ?;
 
 -- name: ListUsers :many
-SELECT id, username, totp_secret, display_name, role, created_at FROM users ORDER BY created_at DESC;
+SELECT name, totp_secret, display_name, is_admin, created_at FROM users ORDER BY created_at DESC;
 
 -- name: CreateUser :exec
-INSERT INTO users (id, username, totp_secret, display_name, role) VALUES (?, ?, ?, ?, ?);
+INSERT INTO users (name, totp_secret, display_name, is_admin) VALUES (?, ?, ?, ?);
 
 -- name: GetAdminUser :one
-SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE role = 'admin' LIMIT 1;
+SELECT name, totp_secret, display_name, is_admin, created_at FROM users WHERE is_admin = 1 LIMIT 1;
 
--- name: GetAdminUserID :one
-SELECT id FROM users WHERE role = 'admin' LIMIT 1;
+-- name: GetAdminName :one
+SELECT name FROM users WHERE is_admin = 1 LIMIT 1;
 
 -- name: CountAdminUsers :one
-SELECT COUNT(*) FROM users WHERE role = 'admin';
+SELECT COUNT(*) FROM users WHERE is_admin = 1;

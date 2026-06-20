@@ -11,24 +11,24 @@ import (
 const (
 	sessionAuthenticatedKey = "authenticated"
 	sessionUserIDKey        = "user_id"
-	sessionUserRoleKey      = "user_role"
-	sessionUsernameKey      = "user_username"
+	sessionIsAdminKey       = "is_admin"
+	sessionUsernameKey      = "user_name"
 )
 
 type ctxKey string
 
 const (
 	ctxUserID   ctxKey = "ctx_user_id"
-	ctxUserRole ctxKey = "ctx_user_role"
+	ctxIsAdmin  ctxKey = "ctx_is_admin"
 	ctxUsername ctxKey = "ctx_username"
 )
 
 // SetUserContext returns a new context with user identity values set.
 // This is used by APIAuth to propagate user info without relying on the session.
-func SetUserContext(ctx context.Context, userID, role, username string) context.Context {
-	ctx = context.WithValue(ctx, ctxUserID, userID)
-	ctx = context.WithValue(ctx, ctxUserRole, role)
-	ctx = context.WithValue(ctx, ctxUsername, username)
+func SetUserContext(ctx context.Context, name string, isAdmin bool) context.Context {
+	ctx = context.WithValue(ctx, ctxUserID, name)
+	ctx = context.WithValue(ctx, ctxIsAdmin, isAdmin)
+	ctx = context.WithValue(ctx, ctxUsername, name)
 	return ctx
 }
 
@@ -70,21 +70,21 @@ func SetVideoAuth(ctx context.Context, sm *scs.SessionManager) {
 	sm.Put(ctx, sessionAuthenticatedKey, true)
 }
 
-// SetUserSession stores the authenticated user's ID, role, and username in the session.
-func SetUserSession(ctx context.Context, sm *scs.SessionManager, userID, role, username string) {
-	sm.Put(ctx, sessionUserIDKey, userID)
-	sm.Put(ctx, sessionUserRoleKey, role)
-	sm.Put(ctx, sessionUsernameKey, username)
+// SetUserSession stores the authenticated user's name and admin status in the session.
+func SetUserSession(ctx context.Context, sm *scs.SessionManager, name string, isAdmin bool) {
+	sm.Put(ctx, sessionUserIDKey, name)
+	sm.Put(ctx, sessionIsAdminKey, isAdmin)
+	sm.Put(ctx, sessionUsernameKey, name)
 }
 
 // ClearUserSession removes user authentication data from the session.
 func ClearUserSession(ctx context.Context, sm *scs.SessionManager) {
 	sm.Remove(ctx, sessionUserIDKey)
-	sm.Remove(ctx, sessionUserRoleKey)
+	sm.Remove(ctx, sessionIsAdminKey)
 	sm.Remove(ctx, sessionUsernameKey)
 }
 
-// GetUserIDFromContext returns the user ID from the context alone, without
+// GetUserIDFromContext returns the user name from the context alone, without
 // needing a session manager. This is safe when the caller knows that APIAuth
 // or similar middleware has already populated the context.
 func GetUserIDFromContext(ctx context.Context) string {
@@ -94,16 +94,15 @@ func GetUserIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-// GetUserRoleFromContext returns the user role from the context alone, without
-// needing a session manager.
-func GetUserRoleFromContext(ctx context.Context) string {
-	if role, ok := ctx.Value(ctxUserRole).(string); ok && role != "" {
-		return role
+// GetIsAdminFromContext returns the user's admin status from the context alone.
+func GetIsAdminFromContext(ctx context.Context) bool {
+	if isAdmin, ok := ctx.Value(ctxIsAdmin).(bool); ok {
+		return isAdmin
 	}
-	return ""
+	return false
 }
 
-// GetUserID returns the authenticated user's ID, checking context first, then session.
+// GetUserID returns the authenticated user's name, checking context first, then session.
 // Returns empty string if not set.
 func GetUserID(ctx context.Context, sm *scs.SessionManager) string {
 	if id, ok := ctx.Value(ctxUserID).(string); ok && id != "" {
@@ -112,16 +111,15 @@ func GetUserID(ctx context.Context, sm *scs.SessionManager) string {
 	return sm.GetString(ctx, sessionUserIDKey)
 }
 
-// GetUserRole returns the authenticated user's role, checking context first, then session.
-// Returns empty string if not set.
-func GetUserRole(ctx context.Context, sm *scs.SessionManager) string {
-	if role, ok := ctx.Value(ctxUserRole).(string); ok && role != "" {
-		return role
+// GetIsAdmin returns whether the authenticated user is an admin.
+func GetIsAdmin(ctx context.Context, sm *scs.SessionManager) bool {
+	if isAdmin, ok := ctx.Value(ctxIsAdmin).(bool); ok {
+		return isAdmin
 	}
-	return sm.GetString(ctx, sessionUserRoleKey)
+	return sm.GetBool(ctx, sessionIsAdminKey)
 }
 
-// GetUsername returns the authenticated user's username, checking context first, then session.
+// GetUsername returns the authenticated user's name, checking context first, then session.
 // Returns empty string if not set.
 func GetUsername(ctx context.Context, sm *scs.SessionManager) string {
 	if name, ok := ctx.Value(ctxUsername).(string); ok && name != "" {
@@ -145,12 +143,12 @@ func RequireUserAuth(sm *scs.SessionManager) func(http.Handler) http.Handler {
 	}
 }
 
-// RequireAdmin returns middleware that restricts access to users with the
-// "admin" role. Returns 403 Forbidden if the user is not an admin.
+// RequireAdmin returns middleware that restricts access to admin users.
+// Returns 403 Forbidden if the user is not an admin.
 func RequireAdmin(sm *scs.SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if GetUserRole(r.Context(), sm) != "admin" {
+			if !GetIsAdmin(r.Context(), sm) {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}

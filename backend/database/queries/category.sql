@@ -11,13 +11,13 @@ SELECT name, display_name, description, created_by, created_at FROM categories O
 SELECT COUNT(*) FROM categories;
 
 -- name: ListCategoriesByUploader :many
-SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ? ORDER BY c.created_at DESC;
+SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.name = ? AND cu.can_upload = 1 ORDER BY c.created_at DESC;
 
 -- name: ListCategoriesByUploaderPaginated :many
-SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ? ORDER BY c.created_at DESC LIMIT ? OFFSET ?;
+SELECT c.name, c.display_name, c.description, c.created_by, c.created_at FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.name = ? AND cu.can_upload = 1 ORDER BY c.created_at DESC LIMIT ? OFFSET ?;
 
 -- name: CountCategoriesByUploader :one
-SELECT COUNT(*) FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.user_id = ?;
+SELECT COUNT(*) FROM categories c JOIN category_users cu ON cu.category_name = c.name WHERE cu.name = ? AND cu.can_upload = 1;
 
 -- name: CreateCategory :exec
 INSERT INTO categories (name, display_name, description, created_by) VALUES (?, ?, ?, ?);
@@ -29,16 +29,19 @@ DELETE FROM categories WHERE name = ?;
 SELECT COUNT(*) FROM resources WHERE category_name = ?;
 
 -- name: ListUploaders :many
-SELECT user_id FROM category_users WHERE category_name = ?;
+SELECT name, can_upload FROM category_users WHERE category_name = ?;
 
--- name: IsUploaderAuthorized :one
-SELECT COUNT(*) FROM category_users WHERE category_name = ? AND user_id = ?;
+-- name: IsAssigned :one
+SELECT COUNT(*) FROM category_users WHERE category_name = ? AND name = ?;
+
+-- name: CanUpload :one
+SELECT COUNT(*) FROM category_users WHERE category_name = ? AND name = ? AND can_upload = 1;
 
 -- name: ClearCategoryUploaders :exec
 DELETE FROM category_users WHERE category_name = ?;
 
 -- name: AddUploader :exec
-INSERT INTO category_users (category_name, user_id) VALUES (?, ?);
+INSERT INTO category_users (category_name, name, can_upload) VALUES (?, ?, ?);
 
 -- name: RemoveUploader :exec
-DELETE FROM category_users WHERE category_name = ? AND user_id = ?;
+DELETE FROM category_users WHERE category_name = ? AND name = ?;

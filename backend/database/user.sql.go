@@ -10,7 +10,7 @@ import (
 )
 
 const countAdminUsers = `-- name: CountAdminUsers :one
-SELECT COUNT(*) FROM users WHERE role = 'admin'
+SELECT COUNT(*) FROM users WHERE is_admin = 1
 `
 
 func (q *Queries) CountAdminUsers(ctx context.Context) (int64, error) {
@@ -21,95 +21,73 @@ func (q *Queries) CountAdminUsers(ctx context.Context) (int64, error) {
 }
 
 const createUser = `-- name: CreateUser :exec
-INSERT INTO users (id, username, totp_secret, display_name, role) VALUES (?, ?, ?, ?, ?)
+INSERT INTO users (name, totp_secret, display_name, is_admin) VALUES (?, ?, ?, ?)
 `
 
 type CreateUserParams struct {
-	ID          string
-	Username    string
+	Name        string
 	TotpSecret  string
 	DisplayName string
-	Role        string
+	IsAdmin     int64
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	_, err := q.db.ExecContext(ctx, createUser,
-		arg.ID,
-		arg.Username,
+		arg.Name,
 		arg.TotpSecret,
 		arg.DisplayName,
-		arg.Role,
+		arg.IsAdmin,
 	)
 	return err
 }
 
+const getAdminName = `-- name: GetAdminName :one
+SELECT name FROM users WHERE is_admin = 1 LIMIT 1
+`
+
+func (q *Queries) GetAdminName(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, getAdminName)
+	var name string
+	err := row.Scan(&name)
+	return name, err
+}
+
 const getAdminUser = `-- name: GetAdminUser :one
-SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE role = 'admin' LIMIT 1
+SELECT name, totp_secret, display_name, is_admin, created_at FROM users WHERE is_admin = 1 LIMIT 1
 `
 
 func (q *Queries) GetAdminUser(ctx context.Context) (User, error) {
 	row := q.db.QueryRowContext(ctx, getAdminUser)
 	var i User
 	err := row.Scan(
-		&i.ID,
-		&i.Username,
+		&i.Name,
 		&i.TotpSecret,
 		&i.DisplayName,
-		&i.Role,
+		&i.IsAdmin,
 		&i.CreatedAt,
 	)
 	return i, err
-}
-
-const getAdminUserID = `-- name: GetAdminUserID :one
-SELECT id FROM users WHERE role = 'admin' LIMIT 1
-`
-
-func (q *Queries) GetAdminUserID(ctx context.Context) (string, error) {
-	row := q.db.QueryRowContext(ctx, getAdminUserID)
-	var id string
-	err := row.Scan(&id)
-	return id, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE id = ?
+SELECT name, totp_secret, display_name, is_admin, created_at FROM users WHERE name = ?
 `
 
-func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUser, id)
+func (q *Queries) GetUser(ctx context.Context, name string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUser, name)
 	var i User
 	err := row.Scan(
-		&i.ID,
-		&i.Username,
+		&i.Name,
 		&i.TotpSecret,
 		&i.DisplayName,
-		&i.Role,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, totp_secret, display_name, role, created_at FROM users WHERE username = ?
-`
-
-func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByUsername, username)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Username,
-		&i.TotpSecret,
-		&i.DisplayName,
-		&i.Role,
+		&i.IsAdmin,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, totp_secret, display_name, role, created_at FROM users ORDER BY created_at DESC
+SELECT name, totp_secret, display_name, is_admin, created_at FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -122,11 +100,10 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var i User
 		if err := rows.Scan(
-			&i.ID,
-			&i.Username,
+			&i.Name,
 			&i.TotpSecret,
 			&i.DisplayName,
-			&i.Role,
+			&i.IsAdmin,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

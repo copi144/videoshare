@@ -10,11 +10,10 @@ import (
 
 // User represents a system user.
 type User struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
+	Name        string    `json:"name"`
 	TotpSecret  string    `json:"-"`
 	DisplayName string    `json:"display_name"`
-	Role        string    `json:"role"` // "admin" or "uploader"
+	IsAdmin     bool      `json:"is_admin"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -32,45 +31,30 @@ func NewUserStore(db *sql.DB) *UserStore {
 // Insert creates a new user record.
 func (s *UserStore) Insert(u *User) error {
 	ctx := context.Background()
+	isAdmin := int64(0)
+	if u.IsAdmin {
+		isAdmin = 1
+	}
 	return s.q.CreateUser(ctx, database.CreateUserParams{
-		ID:          u.ID,
-		Username:    u.Username,
+		Name:        u.Name,
 		TotpSecret:  u.TotpSecret,
 		DisplayName: u.DisplayName,
-		Role:        u.Role,
+		IsAdmin:     isAdmin,
 	})
 }
 
-// GetByID retrieves a user by ID.
-func (s *UserStore) GetByID(id string) (*User, error) {
+// GetByName retrieves a user by name.
+func (s *UserStore) GetByName(name string) (*User, error) {
 	ctx := context.Background()
-	u, err := s.q.GetUser(ctx, id)
+	u, err := s.q.GetUser(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 	return &User{
-		ID:          u.ID,
-		Username:    u.Username,
+		Name:        u.Name,
 		TotpSecret:  u.TotpSecret,
 		DisplayName: u.DisplayName,
-		Role:        u.Role,
-		CreatedAt:   u.CreatedAt,
-	}, nil
-}
-
-// GetByUsername retrieves a user by username (for login).
-func (s *UserStore) GetByUsername(username string) (*User, error) {
-	ctx := context.Background()
-	u, err := s.q.GetUserByUsername(ctx, username)
-	if err != nil {
-		return nil, err
-	}
-	return &User{
-		ID:          u.ID,
-		Username:    u.Username,
-		TotpSecret:  u.TotpSecret,
-		DisplayName: u.DisplayName,
-		Role:        u.Role,
+		IsAdmin:     u.IsAdmin == 1,
 		CreatedAt:   u.CreatedAt,
 	}, nil
 }
@@ -85,32 +69,31 @@ func (s *UserStore) List() ([]*User, error) {
 	users := make([]*User, 0, len(items))
 	for _, u := range items {
 		users = append(users, &User{
-			ID:          u.ID,
-			Username:    u.Username,
+			Name:        u.Name,
 			TotpSecret:  u.TotpSecret,
 			DisplayName: u.DisplayName,
-			Role:        u.Role,
+			IsAdmin:     u.IsAdmin == 1,
 			CreatedAt:   u.CreatedAt,
 		})
 	}
 	return users, nil
 }
 
-// GetAdminUserID returns the ID of one admin user (used for global category bootstrap).
-func GetAdminUserID(db *sql.DB) (string, error) {
-	var id string
-	err := db.QueryRow("SELECT id FROM users WHERE role = 'admin' LIMIT 1").Scan(&id)
-	return id, err
+// GetAdminName returns the name of one admin user (used for global category bootstrap).
+func GetAdminName(db *sql.DB) (string, error) {
+	ctx := context.Background()
+	q := database.New(db)
+	return q.GetAdminName(ctx)
 }
 
-// Delete removes a user by ID.
-func (s *UserStore) Delete(id string) error {
-	_, err := s.db.Exec("DELETE FROM users WHERE id = ?", id)
+// Delete removes a user by name.
+func (s *UserStore) Delete(name string) error {
+	_, err := s.db.Exec("DELETE FROM users WHERE name = ?", name)
 	return err
 }
 
 // UpdateTotpSecret updates the TOTP secret for a user.
-func (s *UserStore) UpdateTotpSecret(id, secret string) error {
-	_, err := s.db.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", secret, id)
+func (s *UserStore) UpdateTotpSecret(name, secret string) error {
+	_, err := s.db.Exec("UPDATE users SET totp_secret = ? WHERE name = ?", secret, name)
 	return err
 }

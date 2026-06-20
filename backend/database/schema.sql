@@ -22,11 +22,10 @@ CREATE TABLE sessions (
 );
 
 CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
+    name TEXT PRIMARY KEY,
     totp_secret TEXT NOT NULL,
-    display_name TEXT NOT NULL DEFAULT '',
-    role TEXT NOT NULL DEFAULT 'uploader',
+    display_name TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -34,14 +33,15 @@ CREATE TABLE categories (
     name TEXT PRIMARY KEY,
     display_name TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
-    created_by TEXT NOT NULL REFERENCES users(id),
+    created_by TEXT NOT NULL REFERENCES users(name),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE category_users (
     category_name TEXT NOT NULL REFERENCES categories(name),
-    user_id TEXT NOT NULL REFERENCES users(id),
-    PRIMARY KEY (category_name, user_id)
+    name TEXT NOT NULL REFERENCES users(name),
+    can_upload INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (category_name, name)
 );
 
 CREATE TABLE playlists (
@@ -51,7 +51,7 @@ CREATE TABLE playlists (
     name TEXT NOT NULL,
     display_name TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
-    created_by TEXT NOT NULL REFERENCES users(id),
+    created_by TEXT NOT NULL REFERENCES users(name),
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -65,18 +65,29 @@ CREATE TABLE playlist_videos (
 
 CREATE TABLE api_tokens (
     token TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
     user_role TEXT NOT NULL,
     username TEXT NOT NULL,
     expires_at DATETIME NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE share_links (
-    id TEXT PRIMARY KEY,
+-- Resource share links (one per resource + password combo)
+CREATE TABLE share_resources (
     resource_id TEXT NOT NULL REFERENCES resources(id),
     password TEXT NOT NULL,
     expires_at DATETIME,
     created_by TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (resource_id, password)
+);
+
+-- Category / Playlist share links
+CREATE TABLE share_links (
+    id TEXT PRIMARY KEY,
+    password TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    expires_at DATETIME,
+    created_by TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

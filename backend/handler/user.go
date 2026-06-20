@@ -39,7 +39,7 @@ func NewUserHandler(userStore *model.UserStore, sm *scs.SessionManager, db *sql.
 // POST /api/login
 func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username string `json:"username"`
+		Name    string `json:"name"`
 		TOTPCode string `json:"totp_code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -47,29 +47,29 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" || req.TOTPCode == "" {
-		respondJSONError(w, "Username and authenticator code are required.", http.StatusBadRequest)
+	if req.Name == "" || req.TOTPCode == "" {
+		respondJSONError(w, "Name and authenticator code are required.", http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.userStore.GetByUsername(req.Username)
+	user, err := h.userStore.GetByName(req.Name)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			respondJSONError(w, "Invalid username or code.", http.StatusUnauthorized)
+			respondJSONError(w, "Invalid name or code.", http.StatusUnauthorized)
 			return
 		}
-		slog.Error("failed to lookup user", "username", req.Username, "error", err)
+		slog.Error("failed to lookup user", "name", req.Name, "error", err)
 		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	if !totp.Validate(req.TOTPCode, user.TotpSecret) {
-		respondJSONError(w, "Invalid username or code.", http.StatusUnauthorized)
+		respondJSONError(w, "Invalid name or code.", http.StatusUnauthorized)
 		return
 	}
 
-	middleware.SetUserSession(r.Context(), h.sm, user.ID, user.Role, user.Username)
-	slog.Info("user logged in", "username", req.Username, "role", user.Role)
+	middleware.SetUserSession(r.Context(), h.sm, user.Name, user.IsAdmin)
+	slog.Info("user logged in", "name", req.Name, "is_admin", user.IsAdmin)
 
 	// Generate API token for Bearer auth on subsequent API calls.
 	apiTokenBytes := make([]byte, 32)
@@ -77,8 +77,12 @@ func (h *UserHandler) ServeLoginAPI(w http.ResponseWriter, r *http.Request) {
 		apiToken := hex.EncodeToString(apiTokenBytes)
 
 		// Store in api_tokens table for cookie-free API auth
+		role := "uploader"
+		if user.IsAdmin {
+			role = "admin"
+		}
 		expiresAt := time.Now().UTC().Add(30 * time.Minute)
-		if dbErr := model.SaveAPIToken(h.db, apiToken, user.ID, user.Role, user.Username, expiresAt); dbErr != nil {
+		if dbErr := model.SaveAPIToken(h.db, apiToken, role, user.Name, expiresAt); dbErr != nil {
 			slog.Error("failed to save API token", "error", dbErr)
 		}
 
@@ -121,7 +125,7 @@ func (h *UserHandler) ServeLogoutAPI(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context(), h.sm)
 	username := middleware.GetUsername(r.Context(), h.sm)
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	isAdmin := middleware.GetIsAdmin(r.Context(), h.sm)
 
 	if userID == "" {
 		respondJSONOK(w, map[string]interface{}{
@@ -132,10 +136,9 @@ func (h *UserHandler) ServeMeAPI(w http.ResponseWriter, r *http.Request) {
 
 	respondJSONOK(w, map[string]interface{}{
 		"authenticated": true,
-		"user": map[string]string{
-			"id":       userID,
-			"username": username,
-			"role":     userRole,
+		"user": map[string]interface{}{
+			"name":     username,
+			"is_admin": isAdmin,
 		},
 	})
 }
@@ -150,8 +153,8 @@ func (h *UserHandler) ServeHeartbeat(w http.ResponseWriter, r *http.Request) {
 // POST /api/users
 func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username    string `json:"username"`
-		Role        string `json:"role"`
+		Name        string `json:"name"`
+		IsAdmin     bool   `json:"is_admin"`
 		DisplayName string `json:"display_name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -159,32 +162,20 @@ func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" {
-		respondJSONError(w, "Username is required", http.StatusBadRequest)
+	if req.Name == "" {
+		respondJSONError(w, "Name is required", http.StatusBadRequest)
 		return
 	}
 
-	if !model.IsValidName(req.Username) {
-		respondJSONError(w, "Username must only contain letters, numbers, and hyphens", http.StatusBadRequest)
+	if !model.IsValidName(req.Name) {
+		respondJSONError(w, "Name must only contain letters, numbers, and hyphens", http.StatusBadRequest)
 		return
 	}
 
-	// Default role to "uploader" if not specified.
-	if req.Role == "" {
-		req.Role = "uploader"
-	}
-
-	// Validate role value.
-	validRoles := map[string]bool{"admin": true, "uploader": true, "user": true}
-	if !validRoles[req.Role] {
-		respondJSONError(w, "Invalid role. Must be 'admin', 'uploader', or 'user'.", http.StatusBadRequest)
-		return
-	}
-
-	// Only root admin (username="admin") can create admin users.
-	if req.Role == "admin" {
-		callerUsername := middleware.GetUsername(r.Context(), h.sm)
-		if callerUsername != "admin" {
+	// Only root admin (name="admin") can create admin users.
+	if req.IsAdmin {
+		callerName := middleware.GetUsername(r.Context(), h.sm)
+		if callerName != "admin" {
 			respondJSONError(w, "Only the root admin can create admin users", http.StatusForbidden)
 			return
 		}
@@ -192,7 +183,7 @@ func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
 
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "VideoShare",
-		AccountName: req.Username,
+		AccountName: req.Name,
 	})
 	if err != nil {
 		slog.Error("failed to generate TOTP key", "error", err)
@@ -201,21 +192,20 @@ func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := &model.User{
-		ID:          req.Username,
-		Username:    req.Username,
+		Name:        req.Name,
 		TotpSecret:  key.Secret(),
 		DisplayName: req.DisplayName,
-		Role:        req.Role,
+		IsAdmin:     req.IsAdmin,
 	}
 
 	if err := h.userStore.Insert(user); err != nil {
-		slog.Error("failed to insert user", "username", req.Username, "error", err)
+		slog.Error("failed to insert user", "name", req.Name, "error", err)
 		respondJSONError(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
 	// Store TOTP info in session for the redirect page to pick up.
-	h.sm.Put(r.Context(), "created_user_name", req.Username)
+	h.sm.Put(r.Context(), "created_user_name", req.Name)
 	h.sm.Put(r.Context(), "created_user_secret", key.Secret())
 	h.sm.Put(r.Context(), "created_user_uri", key.URL())
 
@@ -234,13 +224,13 @@ func (h *UserHandler) CreateUserAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	h.sm.Put(r.Context(), "created_user_qr", qrDataURI)
 
-	slog.Info("user created via API", "username", req.Username, "role", req.Role)
+	slog.Info("user created via API", "name", req.Name, "is_admin", req.IsAdmin)
 
 	respondJSONOK(w, map[string]interface{}{
 		"totp_secret": key.Secret(),
 		"totp_uri":    key.URL(),
 		"qr_image":    qrDataURI,
-		"redirect":    "/admin/users?created=" + url.QueryEscape(req.Username),
+		"redirect":    "/admin/users?created=" + url.QueryEscape(req.Name),
 	})
 }
 
@@ -256,19 +246,17 @@ func (h *UserHandler) ListUsersAPI(w http.ResponseWriter, r *http.Request) {
 
 	// Build response list without exposing TOTP secrets.
 	type userResp struct {
-		ID          string `json:"id"`
-		Username    string `json:"username"`
+		Name        string `json:"name"`
 		DisplayName string `json:"display_name"`
-		Role        string `json:"role"`
+		IsAdmin     bool   `json:"is_admin"`
 		CreatedAt   string `json:"created_at"`
 	}
 	resp := make([]userResp, 0, len(users))
 	for _, u := range users {
 		resp = append(resp, userResp{
-			ID:          u.ID,
-			Username:    u.Username,
+			Name:        u.Name,
 			DisplayName: u.DisplayName,
-			Role:        u.Role,
+			IsAdmin:     u.IsAdmin,
 			CreatedAt:   u.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		})
 	}
@@ -278,97 +266,97 @@ func (h *UserHandler) ListUsersAPI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DeleteUserAPI deletes a user by ID.
-// DELETE /api/users/{id}
+// DeleteUserAPI deletes a user by name.
+// DELETE /api/users/{name}
 func (h *UserHandler) DeleteUserAPI(w http.ResponseWriter, r *http.Request) {
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		respondJSONError(w, "Missing user ID", http.StatusBadRequest)
+	targetName := chi.URLParam(r, "name")
+	if targetName == "" {
+		respondJSONError(w, "Missing name", http.StatusBadRequest)
 		return
 	}
 
 	// Look up the target user.
-	targetUser, err := h.userStore.GetByID(targetID)
+	targetUser, err := h.userStore.GetByName(targetName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			respondJSONError(w, "User not found", http.StatusNotFound)
 			return
 		}
-		slog.Error("failed to look up target user", "id", targetID, "error", err)
+		slog.Error("failed to look up target user", "name", targetName, "error", err)
 		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	// Prevent deletion of the root admin account.
-	if targetUser.Username == "admin" {
+	if targetUser.Name == "admin" {
 		respondJSONError(w, "Cannot delete the root admin account", http.StatusForbidden)
 		return
 	}
 
 	// Check permissions of the calling user.
-	callerUsername := middleware.GetUsername(r.Context(), h.sm)
-	callerRole := middleware.GetUserRole(r.Context(), h.sm)
+	callerName := middleware.GetUsername(r.Context(), h.sm)
+	callerIsAdmin := middleware.GetIsAdmin(r.Context(), h.sm)
 
-	if callerRole != "admin" {
+	if !callerIsAdmin {
 		respondJSONError(w, "Only admins can delete users", http.StatusForbidden)
 		return
 	}
 
 	// If the target user is an admin, only the root admin can delete them.
-	if targetUser.Role == "admin" && callerUsername != "admin" {
+	if targetUser.IsAdmin && callerName != "admin" {
 		respondJSONError(w, "Only the root admin can delete other admin users", http.StatusForbidden)
 		return
 	}
 
-	if err := h.userStore.Delete(targetID); err != nil {
-		slog.Error("failed to delete user", "id", targetID, "error", err)
+	if err := h.userStore.Delete(targetName); err != nil {
+		slog.Error("failed to delete user", "name", targetName, "error", err)
 		respondJSONError(w, "Failed to delete user", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("user deleted via API", "id", targetID, "username", targetUser.Username)
+	slog.Info("user deleted via API", "name", targetName)
 	respondJSONOK(w, nil)
 }
 
 // ResetTOTPAPI generates a new TOTP key for the specified user.
-// POST /api/users/{id}/reset-totp
+// POST /api/users/{name}/reset-totp
 func (h *UserHandler) ResetTOTPAPI(w http.ResponseWriter, r *http.Request) {
-	targetID := chi.URLParam(r, "id")
-	if targetID == "" {
-		respondJSONError(w, "Missing user ID", http.StatusBadRequest)
+	targetName := chi.URLParam(r, "name")
+	if targetName == "" {
+		respondJSONError(w, "Missing name", http.StatusBadRequest)
 		return
 	}
 
 	// Look up the target user.
-	targetUser, err := h.userStore.GetByID(targetID)
+	targetUser, err := h.userStore.GetByName(targetName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			respondJSONError(w, "User not found", http.StatusNotFound)
 			return
 		}
-		slog.Error("failed to look up target user", "id", targetID, "error", err)
+		slog.Error("failed to look up target user", "name", targetName, "error", err)
 		respondJSONError(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
 	// Check permissions of the calling user.
-	callerUsername := middleware.GetUsername(r.Context(), h.sm)
-	callerRole := middleware.GetUserRole(r.Context(), h.sm)
+	callerName := middleware.GetUsername(r.Context(), h.sm)
+	callerIsAdmin := middleware.GetIsAdmin(r.Context(), h.sm)
 
-	if callerRole != "admin" {
+	if !callerIsAdmin {
 		respondJSONError(w, "Only admins can reset TOTP", http.StatusForbidden)
 		return
 	}
 
 	// If the target user is an admin, only the root admin can reset their TOTP.
-	if targetUser.Role == "admin" && callerUsername != "admin" {
+	if targetUser.IsAdmin && callerName != "admin" {
 		respondJSONError(w, "Only the root admin can reset TOTP for other admin users", http.StatusForbidden)
 		return
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "VideoShare",
-		AccountName: targetUser.Username,
+		AccountName: targetUser.Name,
 	})
 	if err != nil {
 		slog.Error("failed to generate TOTP key", "error", err)
@@ -376,13 +364,13 @@ func (h *UserHandler) ResetTOTPAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.userStore.UpdateTotpSecret(targetID, key.Secret()); err != nil {
-		slog.Error("failed to update TOTP secret", "id", targetID, "error", err)
+	if err := h.userStore.UpdateTotpSecret(targetName, key.Secret()); err != nil {
+		slog.Error("failed to update TOTP secret", "name", targetName, "error", err)
 		respondJSONError(w, "Failed to reset TOTP", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("TOTP reset via API", "id", targetID, "username", targetUser.Username)
+	slog.Info("TOTP reset via API", "name", targetName)
 
 	respondJSONOK(w, map[string]interface{}{
 		"totp_secret": key.Secret(),

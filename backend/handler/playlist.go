@@ -88,7 +88,7 @@ func (h *PlaylistHandler) CreatePlaylistAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	slog.Info("playlist created via API", "id", pl.ID, "name", req.Name, "category_id", req.CategoryID, "playlist_type", req.PlaylistType)
+	slog.Info("playlist created via API", "id", pl.ID, "name", req.Name, "category_name", req.CategoryID, "playlist_type", req.PlaylistType)
 	respondJSONOK(w, map[string]interface{}{
 		"redirect": "/admin/playlists",
 	})

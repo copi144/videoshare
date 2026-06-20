@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/alexedwards/scs/v2"
+
 	"videoshare/model"
 )
 
@@ -14,7 +16,7 @@ import (
 // This decouples API authentication from the session cookie, allowing
 // cookie-free access (e.g., from SPA localStorage or programmatic clients).
 // Only applies to /api/ paths (not /v/, /health, or SPA routes).
-func APIAuth(db *sql.DB) func(http.Handler) http.Handler {
+func APIAuth(db *sql.DB, sm *scs.SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !strings.HasPrefix(r.URL.Path, "/api/") {
@@ -45,9 +47,19 @@ func APIAuth(db *sql.DB) func(http.Handler) http.Handler {
 				return
 			}
 
+			// Slide the API token expiry forward on each use.
+			if refreshErr := model.RefreshAPITokenExpiry(db, token); refreshErr != nil {
+				slog.Warn("failed to refresh API token expiry", "error", refreshErr)
+			}
+
+			isAdmin := apiToken.UserRole == "admin"
+
+			// Set user session so session-based auth (e.g. RequireUserAuth) also works.
+			SetUserSession(r.Context(), sm, apiToken.Name, isAdmin)
+
 			// Set user info in context so downstream handlers can access it
 			// without relying on the session cookie.
-			ctx := SetUserContext(r.Context(), apiToken.UserID, apiToken.UserRole, apiToken.Username)
+			ctx := SetUserContext(r.Context(), apiToken.Name, isAdmin)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

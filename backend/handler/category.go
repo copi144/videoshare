@@ -51,7 +51,7 @@ func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	userID := middleware.GetUserID(r.Context(), h.sm)
+	name := middleware.GetUsername(r.Context(), h.sm)
 
 	displayName := req.DisplayName
 	if displayName == "" {
@@ -62,7 +62,7 @@ func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Reque
 		Name:        req.Name,
 		DisplayName: displayName,
 		Description: req.Description,
-		CreatedBy:   userID,
+		CreatedBy:   name,
 	}
 
 	if err := h.categoryStore.Insert(cat); err != nil {
@@ -80,32 +80,32 @@ func (h *CategoryHandler) CreateCategoryAPI(w http.ResponseWriter, r *http.Reque
 // DeleteCategoryAPI handles JSON category deletion.
 // DELETE /api/categories/{id}
 func (h *CategoryHandler) DeleteCategoryAPI(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
+	name := chi.URLParam(r, "id")
+	if name == "" {
 		respondJSONError(w, "Missing category ID", http.StatusBadRequest)
 		return
 	}
 
-	if model.IsGlobal(id) {
+	if model.IsGlobal(name) {
 		respondJSONError(w, "Cannot delete the Global category", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.categoryStore.Delete(id); err != nil {
-		slog.Error("failed to delete category", "id", id, "error", err)
+	if err := h.categoryStore.Delete(name); err != nil {
+		slog.Error("failed to delete category", "name", name, "error", err)
 		respondJSONError(w, "Failed to delete category", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("category deleted via API", "id", id)
+	slog.Info("category deleted via API", "name", name)
 	respondJSONOK(w, nil)
 }
 
 // AssignUploadersAPI handles JSON assignment of uploaders to a category.
 // POST /api/categories/{id}/uploaders
 func (h *CategoryHandler) AssignUploadersAPI(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
+	name := chi.URLParam(r, "id")
+	if name == "" {
 		respondJSONError(w, "Missing category ID", http.StatusBadRequest)
 		return
 	}
@@ -118,13 +118,13 @@ func (h *CategoryHandler) AssignUploadersAPI(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := h.categoryStore.AssignUploaders(id, req.UserIDs); err != nil {
-		slog.Error("failed to assign uploaders", "category_id", id, "error", err)
+	if err := h.categoryStore.AssignUploaders(name, req.UserIDs); err != nil {
+		slog.Error("failed to assign uploaders", "category_name", name, "error", err)
 		respondJSONError(w, "Failed to assign uploaders", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("uploaders assigned via API", "category_id", id, "count", len(req.UserIDs))
+	slog.Info("uploaders assigned via API", "category_name", name, "count", len(req.UserIDs))
 	respondJSONOK(w, nil)
 }
 
@@ -132,7 +132,7 @@ func (h *CategoryHandler) AssignUploadersAPI(w http.ResponseWriter, r *http.Requ
 // GET /api/categories
 func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context(), h.sm)
-	userRole := middleware.GetUserRole(r.Context(), h.sm)
+	isAdmin := middleware.GetIsAdmin(r.Context(), h.sm)
 
 	// Parse pagination parameters at the boundary.
 	const defaultLimit = 50
@@ -165,7 +165,7 @@ func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Reque
 	var categories []*model.Category
 	var total int
 	var err error
-	if userRole == "admin" {
+	if isAdmin {
 		categories, err = h.categoryStore.ListPaginated(limit, offset)
 		if err == nil {
 			total, err = h.categoryStore.Count()
@@ -184,8 +184,8 @@ func (h *CategoryHandler) ListCategoriesAPI(w http.ResponseWriter, r *http.Reque
 
 	// Ensure the Global category is always included (it may not be in ListByUploader results
 	// since Global was only inserted into categories, not category_uploaders).
-	if userRole != "admin" {
-		globalCat, globalErr := h.categoryStore.GetByID(model.GlobalCategoryID)
+	if !isAdmin {
+		globalCat, globalErr := h.categoryStore.GetByName(model.GlobalCategoryName)
 		if globalErr == nil && globalCat != nil {
 			// Check if Global is already in the list
 			hasGlobal := false
