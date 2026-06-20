@@ -174,8 +174,14 @@ func (s *CategoryStore) CountByUploader(name string) (int, error) {
 	return int(count), err
 }
 
-// AssignUploaders sets the uploaders for a category (replaces all existing).
-func (s *CategoryStore) AssignUploaders(categoryName string, names []string) error {
+// Member represents a user assigned to a category with upload permission status.
+type Member struct {
+	Name      string
+	CanUpload bool
+}
+
+// AssignUploaders sets the members for a category (replaces all existing).
+func (s *CategoryStore) AssignUploaders(categoryName string, members []Member) error {
 	ctx := context.Background()
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -187,11 +193,15 @@ func (s *CategoryStore) AssignUploaders(categoryName string, names []string) err
 	if err := qtx.ClearCategoryUploaders(ctx, categoryName); err != nil {
 		return err
 	}
-	for _, n := range names {
+	for _, m := range members {
+		canUpload := int64(0)
+		if m.CanUpload {
+			canUpload = 1
+		}
 		if err := qtx.AddUploader(ctx, database.AddUploaderParams{
 			CategoryName: categoryName,
-			Name:         n,
-			CanUpload:    0,
+			Name:         m.Name,
+			CanUpload:    canUpload,
 		}); err != nil {
 			return err
 		}

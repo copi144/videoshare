@@ -147,8 +147,11 @@ export const createCategory = (name: string, displayName: string, description: s
 export const deleteCategory = (name: string) =>
   request<{ok: boolean}>('DELETE', `/api/categories/${name}`);
 
-export const assignUploaders = (categoryName: string, userIds: string[]) =>
-  request<{ok: boolean; redirect?: string}>('POST', `/api/categories/${categoryName}/uploaders`, { user_ids: userIds });
+export const getUploaders = (categoryName: string) =>
+  request<{members: Array<{name: string; can_upload: boolean}>}>('GET', `/api/categories/${categoryName}/uploaders`);
+
+export const assignUploaders = (categoryName: string, members: Array<{name: string; can_upload: boolean}>) =>
+  request<{ok: boolean; redirect?: string}>('POST', `/api/categories/${categoryName}/uploaders`, { members });
 
 // Playlists
 export const listPlaylists = (params?: {limit?: number; offset?: number; category_name?: string; playlist_type?: string}) => {

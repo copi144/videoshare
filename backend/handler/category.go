@@ -101,6 +101,40 @@ func (h *CategoryHandler) DeleteCategoryAPI(w http.ResponseWriter, r *http.Reque
 	respondJSONOK(w, nil)
 }
 
+// ListUploadersAPI returns the current members (uploaders) for a category with their can_upload status.
+// GET /api/categories/{id}/uploaders
+func (h *CategoryHandler) ListUploadersAPI(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "id")
+	if name == "" {
+		respondJSONError(w, "Missing category ID", http.StatusBadRequest)
+		return
+	}
+
+	members, err := h.categoryStore.GetUploaders(name)
+	if err != nil {
+		slog.Error("failed to list uploaders", "category_name", name, "error", err)
+		respondJSONError(w, "Failed to list uploaders", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert database rows to JSON-friendly response with boolean can_upload.
+	type memberJSON struct {
+		Name      string `json:"name"`
+		CanUpload bool   `json:"can_upload"`
+	}
+	result := make([]memberJSON, 0, len(members))
+	for _, m := range members {
+		result = append(result, memberJSON{
+			Name:      m.Name,
+			CanUpload: m.CanUpload != 0,
+		})
+	}
+
+	respondJSONOK(w, map[string]interface{}{
+		"members": result,
+	})
+}
+
 // AssignUploadersAPI handles JSON assignment of uploaders to a category.
 // POST /api/categories/{id}/uploaders
 func (h *CategoryHandler) AssignUploadersAPI(w http.ResponseWriter, r *http.Request) {
@@ -111,20 +145,32 @@ func (h *CategoryHandler) AssignUploadersAPI(w http.ResponseWriter, r *http.Requ
 	}
 
 	var req struct {
-		UserIDs []string `json:"user_ids"`
+		Members []struct {
+			Name      string `json:"name"`
+			CanUpload bool   `json:"can_upload"`
+		} `json:"members"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.categoryStore.AssignUploaders(name, req.UserIDs); err != nil {
+	// Convert to model.Member slice.
+	members := make([]model.Member, len(req.Members))
+	for i, m := range req.Members {
+		members[i] = model.Member{
+			Name:      m.Name,
+			CanUpload: m.CanUpload,
+		}
+	}
+
+	if err := h.categoryStore.AssignUploaders(name, members); err != nil {
 		slog.Error("failed to assign uploaders", "category_name", name, "error", err)
 		respondJSONError(w, "Failed to assign uploaders", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("uploaders assigned via API", "category_name", name, "count", len(req.UserIDs))
+	slog.Info("uploaders assigned via API", "category_name", name, "count", len(members))
 	respondJSONOK(w, nil)
 }
 

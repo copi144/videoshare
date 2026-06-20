@@ -93,6 +93,7 @@ func NewRouter(sm *scs.SessionManager,
 			// JSON API routes for categories (admin only)
 			r.Post("/api/categories", categoryH.CreateCategoryAPI)
 			r.Delete("/api/categories/{id}", categoryH.DeleteCategoryAPI)
+			r.Get("/api/categories/{id}/uploaders", categoryH.ListUploadersAPI)
 			r.Post("/api/categories/{id}/uploaders", categoryH.AssignUploadersAPI)
 		})
 
