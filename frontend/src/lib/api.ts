@@ -208,6 +208,18 @@ export const deleteTargetShareLink = (id: string) =>
 export const authenticateShareLink = (id: string, password: string) =>
   request<{ok: boolean; redirect: string; target_type: string; target_id: string}>('POST', `/api/share-links/${id}/auth`, { password });
 
+export const getShareLinkResources = (id: string, password: string) =>
+  request<{ok: boolean; target_type: string; target_name: string; resources: Array<{
+    id: string;
+    title: string;
+    filename: string;
+    file_size: number;
+    content_type: string;
+    resource_type: string;
+    views: number;
+    created_at: string;
+  }>}>('GET', `/api/share-links/${id}/resources?password=${encodeURIComponent(password)}`);
+
 // Users
 export const createUser = (name: string, isAdmin: boolean, displayName: string) =>
   request<{ok: boolean; totp_secret: string; totp_uri: string; qr_image: string; redirect?: string}>('POST', '/api/users', { name, is_admin: isAdmin, display_name: displayName });

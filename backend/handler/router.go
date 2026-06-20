@@ -59,7 +59,7 @@ func NewRouter(sm *scs.SessionManager,
 	userH := NewUserHandler(userStore, sm, db)
 	resourceH := NewResourceHandler(resourceStore, categoryStore, dataDir, userStore, playlistStore, transcodeQueue, ffmpegPath)
 	shareResourceH := NewShareResourceHandler(shareResourceStore, resourceStore)
-	shareLinkH := NewShareLinkHandler(shareLinkStore, categoryStore, playlistStore)
+	shareLinkH := NewShareLinkHandler(shareLinkStore, categoryStore, playlistStore, resourceStore)
 	sessionH := NewSessionHandler(userStore, resourceStore, shareResourceStore, categoryStore, sm, db)
 	streamH := NewStreamHandler(resourceStore, dataDir)
 	playlistH := NewPlaylistHandler(playlistStore, resourceStore, categoryStore, sm)
@@ -135,6 +135,7 @@ func NewRouter(sm *scs.SessionManager,
 
 	// Share link auth — public (for /#/s/{id}/{password} URL access)
 	r.Post("/api/share-links/{id}/auth", shareLinkH.AuthenticateAPI)
+	r.Get("/api/share-links/{id}/resources", shareLinkH.GetSharedResourcesAPI)
 
 	// Video streaming — accessible by both system users and share-link viewers
 	r.With(middleware.RequireUserOrVideoAuth(sm)).Get("/v/{id}", streamH.ServeVideo)

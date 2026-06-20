@@ -17,14 +17,16 @@ type ShareLinkHandler struct {
 	store         *model.ShareLinkStore
 	categoryStore *model.CategoryStore
 	playlistStore *model.PlaylistStore
+	resourceStore *model.ResourceStore
 }
 
 // NewShareLinkHandler creates a new ShareLinkHandler.
-func NewShareLinkHandler(store *model.ShareLinkStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore) *ShareLinkHandler {
+func NewShareLinkHandler(store *model.ShareLinkStore, categoryStore *model.CategoryStore, playlistStore *model.PlaylistStore, resourceStore *model.ResourceStore) *ShareLinkHandler {
 	return &ShareLinkHandler{
 		store:         store,
 		categoryStore: categoryStore,
 		playlistStore: playlistStore,
+		resourceStore: resourceStore,
 	}
 }
 
@@ -85,13 +87,14 @@ func (h *ShareLinkHandler) CreateAPI(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	link := &model.ShareLink{
-		ID:         id,
-		Password:   password,
-		TargetType: req.TargetType,
-		TargetID:   req.TargetID,
-		ExpiresAt:  &t,
-		CreatedBy:  userID,
-		CreatedAt:  now,
+		ID:             id,
+		Password:       password,
+		TargetType:     req.TargetType,
+		TargetID:       req.TargetID,
+		TargetCategory: req.TargetCategory,
+		ExpiresAt:      &t,
+		CreatedBy:      userID,
+		CreatedAt:      now,
 	}
 
 	if err := h.store.Create(link); err != nil {
@@ -217,4 +220,134 @@ func (h *ShareLinkHandler) AuthenticateAPI(w http.ResponseWriter, r *http.Reques
 		"target_type": link.TargetType,
 		"target_id":   link.TargetID,
 	})
+}
+
+// GetSharedResourcesAPI returns resources for a share link (public, password-protected).
+// GET /api/share-links/{id}/resources?password=xxx
+func (h *ShareLinkHandler) GetSharedResourcesAPI(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	password := r.URL.Query().Get("password")
+	if id == "" || password == "" {
+		respondJSONError(w, "Missing share link ID or password", http.StatusBadRequest)
+		return
+	}
+
+	link, err := h.store.GetByID(id)
+	if err != nil {
+		respondJSONError(w, "Invalid share link", http.StatusUnauthorized)
+		return
+	}
+	if link.Password != password {
+		respondJSONError(w, "Invalid password", http.StatusUnauthorized)
+		return
+	}
+	if link.ExpiresAt != nil && time.Now().UTC().After(*link.ExpiresAt) {
+		respondJSONError(w, "Share link has expired", http.StatusUnauthorized)
+		return
+	}
+
+	const limit = 100
+	const offset = 0
+
+	if link.TargetType == "category" {
+		category, err := h.categoryStore.GetByName(link.TargetID)
+		if err != nil {
+			slog.Error("category not found for share link", "category", link.TargetID, "error", err)
+			respondJSONError(w, "Target category not found", http.StatusNotFound)
+			return
+		}
+		resources, err := h.resourceStore.ListByCategoryPaginated(link.TargetID, limit, offset)
+		if err != nil {
+			slog.Error("failed to list resources for share link", "error", err)
+			respondJSONError(w, "Failed to list resources", http.StatusInternalServerError)
+			return
+		}
+		type resourceInfo struct {
+			ID           string `json:"id"`
+			Title        string `json:"title"`
+			Filename     string `json:"filename"`
+			FileSize     int64  `json:"file_size"`
+			ContentType  string `json:"content_type"`
+			ResourceType string `json:"resource_type"`
+			Views        int    `json:"views"`
+			CreatedAt    string `json:"created_at"`
+		}
+		items := make([]resourceInfo, 0, len(resources))
+		for _, res := range resources {
+			if res.Banned {
+				continue
+			}
+			items = append(items, resourceInfo{
+				ID:           res.ID,
+				Title:        res.Title,
+				Filename:     res.Filename,
+				FileSize:     res.FileSize,
+				ContentType:  res.ContentType,
+				ResourceType: res.ResourceType,
+				Views:        res.Views,
+				CreatedAt:    res.CreatedAt.Format(time.RFC3339),
+			})
+		}
+		respondJSONOK(w, map[string]interface{}{
+			"ok":          true,
+			"target_type": "category",
+			"target_name": category.DisplayName,
+			"resources":   items,
+		})
+		return
+	}
+
+	if link.TargetType == "playlist" {
+		playlist, err := h.playlistStore.GetByName(link.TargetCategory, link.TargetID)
+		if err != nil {
+			slog.Error("playlist not found for share link", "playlist", link.TargetID, "error", err)
+			respondJSONError(w, "Target playlist not found", http.StatusNotFound)
+			return
+		}
+		videoIDs, err := h.playlistStore.ListVideos(link.TargetCategory, link.TargetID)
+		if err != nil {
+			slog.Error("failed to list playlist videos", "error", err)
+			respondJSONError(w, "Failed to list videos", http.StatusInternalServerError)
+			return
+		}
+		type resourceInfo struct {
+			ID           string `json:"id"`
+			Title        string `json:"title"`
+			Filename     string `json:"filename"`
+			FileSize     int64  `json:"file_size"`
+			ContentType  string `json:"content_type"`
+			ResourceType string `json:"resource_type"`
+			Views        int    `json:"views"`
+			CreatedAt    string `json:"created_at"`
+		}
+		items := make([]resourceInfo, 0, len(videoIDs))
+		for _, vid := range videoIDs {
+			res, err := h.resourceStore.GetByID(vid)
+			if err != nil {
+				continue // skip missing resources
+			}
+			if res.Banned {
+				continue
+			}
+			items = append(items, resourceInfo{
+				ID:           res.ID,
+				Title:        res.Title,
+				Filename:     res.Filename,
+				FileSize:     res.FileSize,
+				ContentType:  res.ContentType,
+				ResourceType: res.ResourceType,
+				Views:        res.Views,
+				CreatedAt:    res.CreatedAt.Format(time.RFC3339),
+			})
+		}
+		respondJSONOK(w, map[string]interface{}{
+			"ok":          true,
+			"target_type": "playlist",
+			"target_name": playlist.DisplayName,
+			"resources":   items,
+		})
+		return
+	}
+
+	respondJSONError(w, "Invalid target type", http.StatusBadRequest)
 }
