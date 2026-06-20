@@ -69,10 +69,21 @@ func main() {
 	sessStore := model.NewSessionStore(db)
 	// sessStore.StopCleanup() called explicitly in ordered shutdown (srv first)
 
+	// Auto-detect TLS certs — if both fullchain.pem and privkey.pem exist,
+	// start with HTTPS, otherwise fall back to plain HTTP.
+	certFile := "fullchain.pem"
+	keyFile := "privkey.pem"
+	useTLS := false
+	if _, err := os.Stat(certFile); err == nil {
+		if _, err := os.Stat(keyFile); err == nil {
+			useTLS = true
+		}
+	}
+
 	sm := scs.New()
 	sm.Store = sessStore
 	sm.Lifetime = 30 * time.Minute // sliding expiry: each API call extends session by 30min
-	sm.Cookie.Secure = cfg.CookieSecure
+	sm.Cookie.Secure = useTLS || cfg.CookieSecure
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.SameSite = http.SameSiteLaxMode
 	sm.Cookie.Path = "/"
@@ -157,14 +168,18 @@ func main() {
 	addr := cfg.Addr
 	srv := &http.Server{Addr: addr, Handler: router}
 
-	slog.Info("starting server", "addr", addr)
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	listenErrCh := make(chan error, 1)
 	go func() {
-		listenErrCh <- srv.ListenAndServe()
+		if useTLS {
+			slog.Info("starting server with TLS", "addr", addr)
+			listenErrCh <- srv.ListenAndServeTLS(certFile, keyFile)
+		} else {
+			slog.Info("starting server (plain HTTP — no TLS certs found)", "addr", addr)
+			listenErrCh <- srv.ListenAndServe()
+		}
 	}()
 
 	select {
