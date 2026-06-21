@@ -57,13 +57,8 @@ func main() {
 	}
 
 	// Bootstrap the global category (public/no-password videos).
-	adminName, err := model.GetAdminName(db)
-	if err != nil {
-		slog.Error("failed to lookup admin name for global category bootstrap", "error", err)
-	} else {
-		if err := model.BootstrapGlobalCategory(db, adminName); err != nil {
-			slog.Error("failed to bootstrap global category", "error", err)
-		}
+	if err := model.BootstrapGlobalCategory(db); err != nil {
+		slog.Error("failed to bootstrap global category", "error", err)
 	}
 
 	sessStore := model.NewSessionStore(db)

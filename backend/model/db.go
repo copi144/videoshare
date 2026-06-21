@@ -87,10 +87,29 @@ func BootstrapAdmin(db *sql.DB, name string) (totpURI string, err error) {
 }
 
 // BootstrapGlobalCategory ensures the Global category exists.
-// It uses an idempotent INSERT OR IGNORE so it is safe to call every startup.
-func BootstrapGlobalCategory(db *sql.DB, adminName string) error {
+// It is idempotent and self-contained — no admin name parameter required.
+func BootstrapGlobalCategory(db *sql.DB) error {
+	// First check if global already exists.
+	var exists int
+	if err := db.QueryRow("SELECT COUNT(*) FROM categories WHERE name = ?", GlobalCategoryName).Scan(&exists); err != nil {
+		return fmt.Errorf("check global category: %w", err)
+	}
+	if exists > 0 {
+		return nil
+	}
+
+	// Need an admin for created_by FK. Find any admin user.
+	var adminName string
+	err := db.QueryRow("SELECT name FROM users WHERE is_admin = 1 LIMIT 1").Scan(&adminName)
+	if err != nil {
+		// No admin yet. This shouldn't happen because BootstrapAdmin runs first,
+		// but handle gracefully — log and skip, next startup will work.
+		slog.Warn("no admin user found, skipping global category bootstrap (will retry on next startup)")
+		return nil
+	}
+
 	result, err := db.Exec(
-		`INSERT OR IGNORE INTO categories (name, display_name, description, created_by)
+		`INSERT INTO categories (name, display_name, description, created_by)
 		 VALUES (?, 'Global', 'Public videos (no password required)', ?)`,
 		GlobalCategoryName, adminName,
 	)
@@ -99,7 +118,7 @@ func BootstrapGlobalCategory(db *sql.DB, adminName string) error {
 	}
 	rows, _ := result.RowsAffected()
 	if rows > 0 {
-		slog.Info("global category bootstrapped", "name", GlobalCategoryName)
+		slog.Info("global category bootstrapped", "name", GlobalCategoryName, "admin", adminName)
 	}
 	return nil
 }

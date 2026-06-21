@@ -71,6 +71,11 @@ func (h *ResourceHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, http.StatusBadRequest, "Category is required")
 		return
 	}
+	// Verify the category exists in the database.
+	if _, err := h.categoryStore.GetByName(categoryName); err != nil {
+		respondError(w, r, http.StatusBadRequest, "Category '"+categoryName+"' not found")
+		return
+	}
 	if title == "" {
 		respondError(w, r, http.StatusBadRequest, "Title is required")
 		return

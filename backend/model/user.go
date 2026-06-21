@@ -79,13 +79,6 @@ func (s *UserStore) List() ([]*User, error) {
 	return users, nil
 }
 
-// GetAdminName returns the name of one admin user (used for global category bootstrap).
-func GetAdminName(db *sql.DB) (string, error) {
-	ctx := context.Background()
-	q := database.New(db)
-	return q.GetAdminName(ctx)
-}
-
 // Delete removes a user by name.
 func (s *UserStore) Delete(name string) error {
 	_, err := s.db.Exec("DELETE FROM users WHERE name = ?", name)
