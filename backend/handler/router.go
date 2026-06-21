@@ -100,12 +100,14 @@ func NewRouter(sm *scs.SessionManager,
 			r.Post("/api/categories/{id}/uploaders", categoryH.AssignUploadersAPI)
 		})
 
+		// Playlist listing — any authenticated user can see them (for browse filters)
+		r.Get("/api/playlists", playlistH.ListPlaylistsAPI)
+
 		// Playlist management — admin only
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAdmin(sm))
 
 			// JSON API routes for playlists (admin only)
-			r.Get("/api/playlists", playlistH.ListPlaylistsAPI)
 			r.Post("/api/playlists", playlistH.CreatePlaylistAPI)
 			r.Delete("/api/playlists/{name}", playlistH.DeletePlaylistAPI)
 			r.Post("/api/playlists/{name}/videos", playlistH.AddVideoAPI)

@@ -568,3 +568,39 @@ func (s *ResourceStore) EnrichWithCategories(resources []*Resource) error {
 	}
 	return nil
 }
+
+// ListByAssignedCategoriesPaginated returns resources in categories where the user is assigned,
+// plus the user's own uploads. Ordered by creation date descending.
+func (s *ResourceStore) ListByAssignedCategoriesPaginated(userID string, limit, offset int) ([]*Resource, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT r.id, r.title, r.filename, r.file_size, r.content_type, r.resource_type,
+		       r.views, r.uploaded_by, r.no_transcode,
+		       r.transcode_status, r.banned, r.created_at, r.updated_at
+		FROM resources r
+		LEFT JOIN resource_categories rc ON r.id = rc.resource_id
+		LEFT JOIN category_users cu ON rc.category_name = cu.category_name
+		WHERE cu.name = ? OR r.uploaded_by = ? OR rc.category_name = 'global'
+		ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
+		userID, userID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanResources(rows)
+}
+
+// CountByAssignedCategories returns the count of resources visible to a user
+// (in assigned categories + own uploads).
+func (s *ResourceStore) CountByAssignedCategories(userID string) (int, error) {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(DISTINCT r.id)
+		FROM resources r
+		LEFT JOIN resource_categories rc ON r.id = rc.resource_id
+		LEFT JOIN category_users cu ON rc.category_name = cu.category_name
+		WHERE cu.name = ? OR r.uploaded_by = ? OR rc.category_name = 'global'`,
+		userID, userID,
+	).Scan(&count)
+	return count, err
+}

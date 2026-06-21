@@ -364,9 +364,21 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 				total, err = h.store.CountByCategory(categoryName)
 			}
 		} else {
-			resources, err = h.store.ListByCategoryAndUploaderPaginated(categoryName, userID, limit, offset)
-			if err == nil {
-				total, err = h.store.CountByCategoryAndUploader(categoryName, userID)
+			// Non-admin: check if user can view this category
+			isPublic := model.IsPublic(categoryName)
+			assigned, _ := h.categoryStore.IsAssigned(userID, categoryName)
+			if isPublic || assigned {
+				// User can see all resources in this category
+				resources, err = h.store.ListByCategoryPaginated(categoryName, limit, offset)
+				if err == nil {
+					total, err = h.store.CountByCategory(categoryName)
+				}
+			} else {
+				// User can only see their own uploads in this category
+				resources, err = h.store.ListByCategoryAndUploaderPaginated(categoryName, userID, limit, offset)
+				if err == nil {
+					total, err = h.store.CountByCategoryAndUploader(categoryName, userID)
+				}
 			}
 		}
 	case resourceType != "":
@@ -387,9 +399,10 @@ func (h *ResourceHandler) ListResourcesAPI(w http.ResponseWriter, r *http.Reques
 			total, err = h.store.Count()
 		}
 	default:
-		resources, err = h.store.ListByUploaderPaginated(userID, limit, offset)
+		// Non-admin, no filter: return resources from assigned categories + own uploads
+		resources, err = h.store.ListByAssignedCategoriesPaginated(userID, limit, offset)
 		if err == nil {
-			total, err = h.store.CountByUploader(userID)
+			total, err = h.store.CountByAssignedCategories(userID)
 		}
 	}
 	if err != nil {
