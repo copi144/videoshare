@@ -37,6 +37,15 @@ func APIAuth(db *sql.DB, sm *scs.SessionManager) func(http.Handler) http.Handler
 			// The route-specific RequireUserOrVideoAuth + RequireShareScope middlewares
 			// still enforce scope restrictions.
 			if sm.GetBool(r.Context(), "authenticated") {
+				// Share visitors may also be logged-in users (session has user_id).
+				// Populate context from session so downstream handlers see user identity.
+				if userID := sm.GetString(r.Context(), "user_id"); userID != "" {
+					isAdmin := sm.GetBool(r.Context(), "is_admin")
+					ctx := SetUserContext(r.Context(), userID, isAdmin)
+					ctx = SetAPIAuthenticated(ctx)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
 				next.ServeHTTP(w, r)
 				return
 			}

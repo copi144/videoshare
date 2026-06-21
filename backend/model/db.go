@@ -157,11 +157,6 @@ func migrate(db *sql.DB) error {
 
 	// ── All other tables ──
 
-	// Drop old api_tokens table (pre-v1.0 had user_role column; v1.0 removed it).
-	if _, err := db.Exec("DROP TABLE IF EXISTS api_tokens"); err != nil {
-		return fmt.Errorf("drop old api_tokens: %w", err)
-	}
-
 	tables := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			name TEXT PRIMARY KEY,
