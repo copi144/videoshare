@@ -112,6 +112,44 @@ export const getResource = (id: string) =>
 export const uploadVideo = (formData: FormData) =>
   request<{ok: boolean; redirect?: string}>('POST', '/api/upload', formData);
 
+export function uploadFileWithProgress(
+  formData: FormData,
+  onProgress: (pct: number) => void
+): Promise<{ok: boolean; redirect?: string; linked?: boolean}> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (_apiToken) {
+      xhr.setRequestHeader('Authorization', `Bearer ${_apiToken}`);
+    }
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (data.ok === false) {
+          reject(new ApiError(xhr.status, data.error || 'Upload failed'));
+        } else {
+          resolve(data);
+        }
+      } catch {
+        reject(new ApiError(xhr.status, 'Invalid server response'));
+      }
+    };
+
+    xhr.onerror = () => reject(new ApiError(0, 'Network error'));
+    xhr.onabort = () => reject(new ApiError(0, 'Upload cancelled'));
+    xhr.send(formData);
+  });
+}
+
 export const deleteResource = (id: string, categoryName?: string) => {
   let path = `/api/resource/${id}`;
   if (categoryName) {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listResources, uploadVideo, deleteResource, retranscode, banResource, listCategories } from '../lib/api';
+  import { listResources, uploadVideo, uploadFileWithProgress, deleteResource, retranscode, banResource, listCategories } from '../lib/api';
   import MarkdownEditor from '../components/MarkdownEditor.svelte';
   import Categories from './Categories.svelte';
   import Playlists from './Playlists.svelte';
@@ -36,6 +36,7 @@
   let uploadError: string | null = null;
   let loading = true;
   let uploading = false;
+  let uploadProgress = 0;
   let copySuccess: string | null = null;
   let dragOver = false;
 
@@ -99,6 +100,7 @@
 
   async function handleUpload() {
     uploadError = null;
+    uploadProgress = 0;
     if (!selectedFile) {
       uploadError = 'Please select a video file.';
       return;
@@ -120,14 +122,16 @@
       fd.append('readme', uploadForm.readme.trim());
       fd.append('category_id', uploadForm.category_id);
       fd.append('no_transcode', uploadForm.noTranscode ? '1' : '0');
-      await uploadVideo(fd);
+      await uploadFileWithProgress(fd, (pct) => { uploadProgress = pct; });
       // Reset form
       uploadForm = { title: '', readme: '', category_id: '', noTranscode: false };
       selectedFile = null;
+      uploadProgress = 0;
       // Reload resources
       await loadData();
     } catch (e: unknown) {
       uploadError = e instanceof Error ? e.message : 'Upload failed.';
+      uploadProgress = 0;
     } finally {
       uploading = false;
     }
@@ -241,9 +245,15 @@
     {#if uploadError}
       <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{uploadError}</div>
     {/if}
+    {#if uploading}
+      <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+        <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: {uploadProgress}%"></div>
+      </div>
+      <p class="text-xs text-gray-500 text-right mb-2">{uploadProgress}%</p>
+    {/if}
     <div class="flex justify-end">
       <button type="submit" disabled={uploading} class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50" aria-busy={uploading}>
-        {uploading ? 'Uploading…' : 'Upload'}
+        {uploading ? 'Upload ' + uploadProgress + '%…' : 'Upload'}
       </button>
     </div>
   </form>

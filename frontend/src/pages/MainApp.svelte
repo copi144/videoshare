@@ -6,6 +6,7 @@
     listResources,
     getResource,
     uploadVideo,
+    uploadFileWithProgress,
     deleteResource,
     retranscode,
     banResource,
@@ -138,6 +139,7 @@
   let selectedFile: File | null = null;
   let uploadError: string | null = null;
   let uploading = false;
+  let uploadProgress = 0;
   let copySuccess: string | null = null;
   let dragOver = false;
   
@@ -324,6 +326,7 @@
 
   async function handleUpload() {
     uploadError = null;
+    uploadProgress = 0;
     if (!selectedFile) {
       uploadError = 'Please select a video file.';
       return;
@@ -345,12 +348,14 @@
       fd.append('readme', uploadForm.readme.trim());
       fd.append('category_id', uploadForm.category_id);
       fd.append('no_transcode', uploadForm.noTranscode ? '1' : '0');
-      await uploadVideo(fd);
+      await uploadFileWithProgress(fd, (pct) => { uploadProgress = pct; });
       uploadForm = { title: '', readme: '', category_id: '', noTranscode: false };
       selectedFile = null;
+      uploadProgress = 0;
       await loadResources();
     } catch (e: unknown) {
       uploadError = e instanceof Error ? e.message : 'Upload failed.';
+      uploadProgress = 0;
     } finally {
       uploading = false;
     }
@@ -1027,8 +1032,14 @@
             {#if uploadError}
               <div class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{uploadError}</div>
             {/if}
+            {#if uploading}
+              <div class="w-full bg-gray-200 rounded-full h-2.5">
+                <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: {uploadProgress}%"></div>
+              </div>
+              <p class="text-xs text-gray-500 text-right">{uploadProgress}%</p>
+            {/if}
             <button type="submit" disabled={uploading || !selectedFile || !uploadForm.title.trim() || !uploadForm.category_id} class="upload-submit-btn">
-              {uploading ? 'Uploading…' : 'upload'}
+              {uploading ? 'Uploading ' + uploadProgress + '%…' : 'upload'}
             </button>
           </form>
           </div>
